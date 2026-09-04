@@ -59,6 +59,7 @@ import pygeoapi.api.maps as maps_api
 import pygeoapi.api.processes as processes_api
 import pygeoapi.api.stac as stac_api
 import pygeoapi.api.tiles as tiles_api
+from pygeoapi.starlette_styles import style_routes  # DIBK
 from pygeoapi.asyncapi import load_asyncapi_document
 from pygeoapi.openapi import load_openapi_document
 from pygeoapi.config import get_config
@@ -732,6 +733,7 @@ api_routes = [
     Route('/collections/{collection_id:path}/coverage', collection_coverage),  # noqa
     Route('/collections/{collection_id:path}/map', collection_map),
     Route('/collections/{collection_id:path}/styles/{style_id:path}/map', collection_map),  # noqa
+    *style_routes,  # DIBK
     Route('/processes', get_processes),
     Route('/processes/{process_id}', get_processes),
     Route('/jobs', get_jobs),

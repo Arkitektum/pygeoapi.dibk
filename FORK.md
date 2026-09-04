@@ -9,6 +9,23 @@ there fails instead of the loss going unnoticed. Run them with the rest of our
 subset (`pytest -c pytest-dibk.ini`) or on their own
 (`pytest -c pytest-dibk.ini tests/dibk`).
 
+`tests/dibk/test_starlette_styles.py` drives the whole request path through
+the Starlette app, using the style provider stub in
+`tests/dibk/styleprovider.py` and the config in
+`tests/dibk/pygeoapi-test-config-styles.yml`. Two pieces of upstream global
+state leak between tests and had to be neutralised in its fixture rather than
+in upstream's `tests/util.py`:
+
+- `API.__init__` writes `FORMAT_TYPES[F_GZIP]` when a config enables gzip and
+  never removes it, so whether responses are gzip encoded depends on which
+  tests ran first. Worth knowing beyond the tests: on the invalid-format path
+  `execute_from_starlette` sets `Content-Encoding: gzip` via
+  `get_response_headers` but never calls `apply_gzip`, so with gzip enabled a
+  bad `?f=` value returns a response no client can decode.
+- `mock_starlette` deletes `pygeoapi.starlette_app` from `sys.modules` on
+  teardown but leaves the attribute on the package, so its own `reload()`
+  raises on the second use in a session.
+
 ## to_json separators and ensure_ascii
 
 **File:** `pygeoapi/util.py`, `to_json()` — 2 lines, both marked `# DIBK`.
@@ -140,9 +157,26 @@ hook covers the OpenAPI document and the conformance declaration. The module
 exposes `CONFORMANCE_CLASSES` as an alias of `CONFORMANCE_CLASSES_STYLES`,
 because `conformance()` looks up that exact name.
 
-**Still not wired up:** the routes in `pygeoapi/starlette_app.py`. Until they
-land, the OpenAPI document advertises `/styles` and the handlers are
-unreachable.
+**Routes** — `pygeoapi/starlette_app.py`, 2 lines:
+
+```python
+from pygeoapi.starlette_styles import style_routes  # DIBK
+...
+    *style_routes,  # DIBK
+```
+
+The async handlers live in `pygeoapi/starlette_styles.py`, a new file, so
+registering four routes costs `starlette_app.py` two lines rather than the
+forty a handler per route would take. That file imports
+`execute_from_starlette` inside each handler, because `starlette_app` imports
+it at module level and the import would otherwise be circular.
+
+The unpack sits before `Route('/collections/{collection_id:path}', ...)`. That
+route uses the `:path` converter, so anything after it would swallow
+`/collections/{collectionId}/styles`; `tests/dibk/test_starlette_styles.py`
+asserts the ordering rather than trusting it.
+
+Flask is untouched, per the Starlette-only scope in `CLAUDE.md`.
 
 `get_oas_30()` returns an empty fragment when no style resource and no
 collection style provider is configured, matching how the other api modules
