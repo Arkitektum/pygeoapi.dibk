@@ -38,6 +38,9 @@ F_PNG = 'png'
 F_JPEG = 'jpeg'
 F_MVT = 'mvt'
 F_NETCDF = 'NetCDF'
+F_MAPBOX = 'mapbox'  # DIBK
+F_SE11 = 'se11'  # DIBK
+F_SLD10 = 'sld10'  # DIBK
 
 #: Formats allowed for ?f= requests (order matters for complex MIME types)
 FORMAT_TYPES = OrderedDict((
@@ -48,4 +51,7 @@ FORMAT_TYPES = OrderedDict((
     (F_JPEG, 'image/jpeg'),
     (F_MVT, 'application/vnd.mapbox-vector-tile'),
     (F_NETCDF, 'application/x-netcdf'),
+    (F_MAPBOX, 'application/vnd.mapbox.style+json'),  # DIBK
+    (F_SE11, 'application/vnd.ogc.se+xml;version=1.1.0'),  # DIBK
+    (F_SLD10, 'application/vnd.ogc.sld+xml;version=1.0.0'),  # DIBK
 ))

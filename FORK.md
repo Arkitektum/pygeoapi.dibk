@@ -114,3 +114,68 @@ so an empty list is the value that keeps them working.
 return a sentinel instead of indexing an assumed-non-empty list.
 
 **Test fallout:** none.
+
+## OGC API - Styles
+
+**Files:** `pygeoapi/api/styles.py` — a new file, no upstream surface.
+
+**Why:** upstream has no OGC API - Styles implementation. The handlers follow
+the api-layer contract (take an `APIRequest`, return
+`(headers, status, content)`) and expect a provider plugin of type `style`
+implementing the `BaseStyleProvider` interface declared in the same file.
+
+**Not yet wired up.** The module is inert until three hooks land:
+
+- `styles` in `all_apis()` (`pygeoapi/api/__init__.py`), which is what makes
+  `openapi.py` pick up `get_oas_30()`
+- the routes in `pygeoapi/starlette_app.py`
+- `CONFORMANCE_CLASSES_STYLES` into the conformance declaration
+
+The OpenAPI fragment refs `#/components/parameters/styleId`,
+`#/components/parameters/collectionIdStyles`, `#/components/schemas/styles`
+and `#/components/schemas/stylemetadata`. None of these exist in
+`pygeoapi/openapi.py` yet, so they have to be added with the `all_apis()` hook
+or the served document will not validate.
+
+## Style formats in FORMAT_TYPES
+
+**File:** `pygeoapi/formats.py` — 6 lines, all marked `# DIBK`.
+
+```python
+F_MAPBOX = 'mapbox'
+F_SE11 = 'se11'
+F_SLD10 = 'sld10'
+```
+
+mapped to `application/vnd.mapbox.style+json`,
+`application/vnd.ogc.se+xml;version=1.1.0` and
+`application/vnd.ogc.sld+xml;version=1.0.0`.
+
+**Why:** `APIRequest._get_format()` resolves an `Accept` header only against
+`FORMAT_TYPES`, so without these entries a request for a stylesheet
+(`Accept: application/vnd.ogc.sld+xml;version=1.0.0`) resolves to `None` and
+`pygeoapi/api/styles.py` falls back to the JSON style document. This is the
+other half of the parameter-tolerant `get_choice_from_headers` above:
+`_get_format()` compares `m.split(';')[0]`, so both sides of the comparison
+now ignore media-type parameters and the versioned style types match.
+
+**Consequences to be aware of:**
+
+- `FORMAT_TYPES` is global, so `?f=se11` is accepted by *every* endpoint.
+  `GET /collections?f=se11` returns a JSON body with
+  `Content-Type: application/vnd.ogc.se+xml;version=1.1.0`. Upstream's
+  `is_valid()` checks membership in `FORMAT_TYPES` and nothing narrows it
+  per-resource. Endpoint-scoped formats would need the `extra_formats`
+  argument of `_get_format()` instead, which is how `itemtypes.py` handles
+  dataset formatters.
+- Media-type parameters are dropped when matching, so *any*
+  `application/vnd.ogc.sld+xml` request resolves to `sld10`, whatever version
+  it asks for. SLD 1.1 is served as `se11` (Symbology Encoding), matching the
+  `sld-11` conformance class.
+- `pygeoapi/api/styles.py::_has_stylesheet` compares the negotiated format
+  against `stylesheet['type']` in the provider config, so those entries must
+  use these short names (`se11`, `sld10`, `mapbox`), not the MIME types.
+
+**To drop this commit,** upstream would have to ship OGC API - Styles with its
+stylesheet media types registered, or expose a per-resource format hook that
+does not require touching the global table.

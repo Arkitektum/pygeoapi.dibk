@@ -1,0 +1,589 @@
+# =================================================================
+#
+# Authors: Tor Anders Gustavsen <tor.anders@arkitektum.no>
+#
+# Copyright (c) 2026 Tor Anders Gustavsen
+#
+# Permission is hereby granted, free of charge, to any person
+# obtaining a copy of this software and associated documentation
+# files (the "Software"), to deal in the Software without
+# restriction, including without limitation the rights to use,
+# copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the
+# Software is furnished to do so, subject to the following
+# conditions:
+#
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+# OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+# HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+# WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+# OTHER DEALINGS IN THE SOFTWARE.
+#
+# =================================================================
+
+"""OGC API - Styles implementation"""
+
+import logging
+from http import HTTPStatus
+from typing import Dict, List, Tuple, Any
+
+from pygeoapi.plugin import load_plugin
+from pygeoapi.util import filter_dict_by_key_value, to_json
+from pygeoapi.provider import filter_providers_by_type
+from pygeoapi.provider.base import ProviderGenericError
+from pygeoapi.formats import F_HTML
+
+from . import APIRequest, API, SYSTEM_LOCALE
+
+LOGGER = logging.getLogger(__name__)
+
+CONFORMANCE_CLASSES_STYLES = [
+    'http://www.opengis.net/spec/ogcapi-styles-1/0.0/conf/core',
+    'http://www.opengis.net/spec/ogcapi-styles-1/0.0/conf/sld-10',
+    'http://www.opengis.net/spec/ogcapi-styles-1/0.0/conf/sld-11'
+]
+
+
+class BaseStyleProvider():
+    """Interface a style provider plugin is expected to implement"""
+
+    def get_styles(self) -> Dict[str, Any]:
+        raise NotImplementedError()
+
+    def get_style(self, style_id: str) -> Dict[str, Any] | None:
+        raise NotImplementedError()
+
+    def get_style_metadata(self, style_id: str) -> Dict[str, Any] | None:
+        raise NotImplementedError()
+
+    def get_style_definition(self, style_id: str, format_: str) -> str | None:
+        raise NotImplementedError()
+
+    def get_style_preview(self, style_id: str):
+        raise NotImplementedError()
+
+
+def get_styles(api: API, request: APIRequest) -> Tuple[Dict, int, str]:
+    """
+    Provide styles of all style providers
+
+    :param api: API object
+    :param request: APIRequest instance with query params
+
+    :returns: tuple of headers, status code, content
+    """
+
+    headers = request.get_response_headers(SYSTEM_LOCALE, **api.api_headers)
+
+    provider_defs = _get_provider_defs(api)
+    server_url = api.config['server']['url']
+    styles: List[Dict] = []
+
+    for provider_def in provider_defs:
+        try:
+            plugin = _load_plugin(provider_def, server_url)
+            content = plugin.get_styles()
+            styles.extend(content['styles'])
+        except ProviderGenericError as err:
+            return api.get_exception(
+                err.http_status_code, headers, request.format,
+                err.ogc_exception_code, err.message)
+
+    content = {
+        'styles': styles,
+        'links': [
+            {
+                'rel': 'alternate',
+                'type': 'text/html',
+                'title': 'This document as HTML',
+                'href': f'{server_url}/styles?f=html'
+            },
+            {
+                'rel': 'self',
+                'type': 'application/json',
+                'title': 'This document',
+                'href': f'{server_url}/styles?f=json'
+            }
+        ]
+    }
+
+    if request.format == F_HTML:
+        return headers, HTTPStatus.UNSUPPORTED_MEDIA_TYPE, ''
+
+    return headers, HTTPStatus.OK, to_json(content, api.pretty_print)
+
+
+def get_collection_styles(api: API, request: APIRequest,
+                          collection_id: str) -> Tuple[Dict, int, str]:
+    """
+    Provide styles of a collection
+
+    :param api: API object
+    :param request: APIRequest instance with query params
+    :param collection_id: collection identifier
+
+    :returns: tuple of headers, status code, content
+    """
+
+    headers = request.get_response_headers(SYSTEM_LOCALE, **api.api_headers)
+
+    collections = filter_dict_by_key_value(
+        api.config['resources'], 'type', 'collection')
+
+    collection = collections.get(collection_id)
+
+    if not collection:
+        return api.get_exception(
+            HTTPStatus.NOT_FOUND, headers, request.format,
+            'NotFound', 'Collection not found')
+
+    provider_def = filter_providers_by_type(collection['providers'], 'style')
+
+    if not provider_def:
+        return api.get_exception(
+            HTTPStatus.NOT_FOUND, headers, request.format,
+            'NotFound', 'Style not found')
+
+    server_url = api.config['server']['url']
+
+    try:
+        plugin = _load_plugin(provider_def, server_url)
+    except ProviderGenericError as err:
+        return api.get_exception(
+            err.http_status_code, headers, request.format,
+            err.ogc_exception_code, err.message)
+
+    content = plugin.get_styles()
+
+    content['links'] = [
+        {
+            'rel': 'alternate',
+            'type': 'text/html',
+            'title': 'This document as HTML',
+            'href': f'{server_url}/collections/{collection_id}/styles?f=html'
+        },
+        {
+            'rel': 'self',
+            'type': 'application/json',
+            'title': 'This document',
+            'href': f'{server_url}/collections/{collection_id}/styles?f=json'
+        }
+    ]
+
+    if request.format == F_HTML:
+        return headers, HTTPStatus.UNSUPPORTED_MEDIA_TYPE, ''
+
+    return headers, HTTPStatus.OK, to_json(content, api.pretty_print)
+
+
+def get_style(api: API, request: APIRequest,
+              style_id: str) -> Tuple[dict, int, str]:
+    """
+    Provide a style, or its stylesheet when a stylesheet format is requested
+
+    :param api: API object
+    :param request: APIRequest instance with query params
+    :param style_id: style identifier
+
+    :returns: tuple of headers, status code, content
+    """
+
+    headers = request.get_response_headers(SYSTEM_LOCALE, **api.api_headers)
+
+    provider_def = _get_provider_def(api, style_id)
+
+    if not provider_def:
+        return api.get_exception(
+            HTTPStatus.NOT_FOUND, headers, request.format,
+            'NotFound', 'Style not found')
+
+    server_url = api.config['server']['url']
+
+    try:
+        plugin = _load_plugin(provider_def, server_url)
+    except ProviderGenericError as err:
+        return api.get_exception(
+            err.http_status_code, headers, request.format,
+            err.ogc_exception_code, err.message)
+
+    format_ = request._get_format(request.get_request_headers(request.headers))
+    has_stylesheet = _has_stylesheet(provider_def, format_)
+
+    if has_stylesheet and format_:
+        return _get_style_definition(
+            api, request, headers, plugin, style_id, format_)
+
+    content = plugin.get_style(style_id)
+
+    if not content:
+        return api.get_exception(
+            HTTPStatus.NOT_FOUND, headers, request.format,
+            'NotFound', 'Style not found')
+
+    if request.format == F_HTML:
+        return headers, HTTPStatus.UNSUPPORTED_MEDIA_TYPE, ''
+
+    return headers, HTTPStatus.OK, to_json(content, api.pretty_print)
+
+
+def get_style_definition(api: API, request: APIRequest,
+                         style_id: str) -> Tuple[dict, int, str]:
+    """
+    Provide the stylesheet of a style in the requested format
+
+    :param api: API object
+    :param request: APIRequest instance with query params
+    :param style_id: style identifier
+
+    :returns: tuple of headers, status code, content
+    """
+
+    headers = request.get_response_headers(SYSTEM_LOCALE, **api.api_headers)
+    provider_def = _get_provider_def(api, style_id)
+
+    if not provider_def:
+        return api.get_exception(
+            HTTPStatus.NOT_FOUND, headers, request.format,
+            'NotFound', 'Style not found')
+
+    server_url = api.config['server']['url']
+
+    try:
+        plugin = _load_plugin(provider_def, server_url)
+    except ProviderGenericError as err:
+        return api.get_exception(
+            err.http_status_code, headers, request.format,
+            err.ogc_exception_code, err.message)
+
+    return _get_style_definition(
+        api, request, headers, plugin, style_id, str(request.format))
+
+
+def get_style_metadata(api: API, request: APIRequest,
+                       style_id: str) -> Tuple[dict, int, str]:
+    """
+    Provide the metadata of a style
+
+    :param api: API object
+    :param request: APIRequest instance with query params
+    :param style_id: style identifier
+
+    :returns: tuple of headers, status code, content
+    """
+
+    headers = request.get_response_headers(SYSTEM_LOCALE, **api.api_headers)
+
+    provider_def = _get_provider_def(api, style_id)
+
+    if not provider_def:
+        return api.get_exception(
+            HTTPStatus.NOT_FOUND, headers, request.format,
+            'NotFound', 'Style not found')
+
+    server_url = api.config['server']['url']
+
+    try:
+        plugin = _load_plugin(provider_def, server_url)
+    except ProviderGenericError as err:
+        return api.get_exception(
+            err.http_status_code, headers, request.format,
+            err.ogc_exception_code, err.message)
+
+    content = plugin.get_style_metadata(style_id)
+
+    if not content:
+        return api.get_exception(
+            HTTPStatus.NOT_FOUND, headers, request.format,
+            'NotFound', 'Style not found')
+
+    if 'links' not in content:
+        content['links'] = []
+
+    content['links'].extend([
+        {
+            'rel': 'alternate',
+            'type': 'text/html',
+            'title': 'This document as HTML',
+            'href': f'{server_url}/styles/{style_id}/metadata?f=html'
+        },
+        {
+            'rel': 'self',
+            'type': 'application/json',
+            'title': 'This document',
+            'href': f'{server_url}/styles/{style_id}/metadata?f=json'
+        }
+    ])
+
+    if request.format == F_HTML:
+        return headers, HTTPStatus.UNSUPPORTED_MEDIA_TYPE, ''
+
+    return headers, HTTPStatus.OK, to_json(content, api.pretty_print)
+
+
+def get_oas_30(cfg: Dict, locale: str) -> Tuple[List[Dict[str, str]], Dict[str, Dict]]:  # noqa
+    """
+    Get OpenAPI fragments
+
+    :param cfg: `dict` of configuration
+    :param locale: `str` of locale
+
+    :returns: `tuple` of `list` of tag objects, and `dict` of path objects
+    """
+
+    paths = {}
+
+    paths['/styles'] = {
+        'get': {
+            'tags': ['styles'],
+            'summary': 'List available styles',
+            'operationId': 'getStyles',
+            'responses': {
+                '200': {
+                    'description': 'Styles available for the base resource',
+                    'content': {
+                        'application/json': {
+                            'schema': {
+                                '$ref': '#/components/schemas/styles'
+                            }
+                        },
+                        'text/html': {
+                            'schema': {
+                                'type': 'string'
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    paths['/styles/{styleId}'] = {
+        'get': {
+            'tags': ['styles'],
+            'summary': 'Fetch a stylesheet for a style',
+            'operationId': 'getStyle',
+            'parameters': [
+                {
+                    '$ref': '#/components/parameters/styleId'
+                }
+            ],
+            'responses': {
+                '200': {
+                    'description': 'The operation was executed successfully',
+                    'content': {
+                        'application/vnd.mapbox.style+json': {
+                            'schema': {
+                                'type': 'object'
+                            }
+                        },
+                        'application/vnd.ogc.se+xml': {
+                            'schema': {
+                                'type': 'string',
+                                'format': 'xml'
+                            }
+                        },
+                        'application/vnd.ogc.sld+xml': {
+                            'schema': {
+                                'type': 'string',
+                                'format': 'xml'
+                            }
+                        },
+                        'text/html': {
+                            'schema': {
+                                'type': 'string'
+                            }
+                        }
+                    }
+                },
+                '400': {
+                    'description': 'Bad Request'
+                },
+                '404': {
+                    'description': 'Not Found'
+                },
+                '406': {
+                    'description': 'Not Acceptable'
+                },
+                '500': {
+                    'description': 'Server Error'
+                }
+            }
+        }
+    }
+
+    paths['/styles/{styleId}/metadata'] = {
+        'get': {
+            'tags': ['styles'],
+            'summary': 'Fetch style metadata',
+            'operationId': 'getStyleMetadata',
+            'parameters': [
+                {
+                    '$ref': '#/components/parameters/styleId'
+                }
+            ],
+            'responses': {
+                '200': {
+                    'description': 'The operation was executed successfully',
+                    'content': {
+                        'application/json': {
+                            'schema': {
+                                '$ref': '#/components/schemas/stylemetadata'
+                            }
+                        },
+                        'text/html': {
+                            'schema': {
+                                'type': 'string'
+                            }
+                        }
+                    }
+                },
+                '400': {
+                    'description': 'Bad Request'
+                },
+                '404': {
+                    'description': 'Not Found'
+                },
+                '406': {
+                    'description': 'Not Acceptable'
+                },
+                '500': {
+                    'description': 'Server Error'
+                }
+            }
+        }
+    }
+
+    paths['/collections/{collectionId}/styles'] = {
+        'get': {
+            'tags': ['styles'],
+            'summary': "List available styles for collection '{collectionId}'",
+            'operationId': 'collection.getStyles',
+            'parameters': [
+                {
+                    '$ref': '#/components/parameters/collectionIdStyles'
+                },
+            ],
+            'responses': {
+                '200': {
+                    'description': 'Styles available for the collection',
+                    'content': {
+                        'application/json': {
+                            'schema': {
+                                '$ref': '#/components/schemas/styles'
+                            }
+                        },
+                        'text/html': {
+                            'schema': {
+                                'type': 'string'
+                            }
+                        }
+                    }
+                },
+                '400': {
+                    'description': 'Bad Request'
+                },
+                '404': {
+                    'description': 'Not Found'
+                },
+                '406': {
+                    'description': 'Not Acceptable'
+                },
+                '500': {
+                    'description': 'Server Error'
+                }
+            }
+        }
+    }
+
+    return [{'name': 'styles'}], {'paths': paths}
+
+
+def _get_provider_def(api: API, style_id: str) -> Dict | None:
+    provider_defs = _get_provider_defs(api)
+
+    for provider_def in provider_defs:
+        if _has_style_id(provider_def, style_id):
+            return provider_def
+
+    return None
+
+
+def _get_provider_defs(api: API) -> List[Dict]:
+    provider_defs = []
+
+    global_styles = filter_dict_by_key_value(
+        api.config['resources'], 'type', 'style')
+
+    if global_styles:
+        provider_defs.append(global_styles['styles']['provider'])
+
+    collections = filter_dict_by_key_value(
+        api.config['resources'], 'type', 'collection')
+
+    for key in collections.keys():
+        provider_def = filter_providers_by_type(
+            collections[key]['providers'], 'style')
+
+        if provider_def:
+            provider_defs.append(provider_def)
+
+    return provider_defs
+
+
+def _get_style_definition(
+    api: API,
+    request: APIRequest,
+    headers: Dict,
+    plugin: BaseStyleProvider,
+    style_id: str,
+    format_: str
+) -> Tuple[dict, int, str]:
+    content = plugin.get_style_definition(style_id, format_)
+
+    if not content:
+        return api.get_exception(
+            HTTPStatus.NOT_FOUND, headers, request.format,
+            'NotFound', 'Style not found')
+
+    if request.format == F_HTML:
+        return headers, HTTPStatus.UNSUPPORTED_MEDIA_TYPE, ''
+
+    return headers, HTTPStatus.OK, content
+
+
+def _has_style_id(provider_def: Dict | None, style_id: str) -> bool:
+    if not provider_def:
+        return False
+
+    styles = provider_def['styles']
+    has_style_id = any(style['id'] == style_id for style in styles)
+
+    return has_style_id
+
+
+def _load_plugin(provider_def: Dict, server_url: str) -> BaseStyleProvider:
+    provider_def['server_url'] = server_url
+
+    return load_plugin('provider', provider_def)
+
+
+def _has_stylesheet(provider_def: Dict, type_: str | None) -> bool:
+    if not type_:
+        return False
+
+    styles: List[Dict[str, Any]] = provider_def.get('styles', [])
+
+    for style in styles:
+        stylesheets: List[Dict[str, Any]] = style.get('stylesheets', [])
+
+        for stylesheet in stylesheets:
+            if stylesheet.get('type') == type_:
+                return True
+
+    return False
