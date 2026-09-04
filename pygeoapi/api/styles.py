@@ -686,6 +686,36 @@ def get_landing_page_link(base_url: str, locale: str) -> Dict:
     }
 
 
+def get_collection_links(config: Dict, collections_url: str, dataset: str,
+                         locale: str) -> List[Dict]:
+    """
+    Get the links from a collection to its styles endpoint
+
+    :param config: `dict` of the collection resource definition
+    :param collections_url: `str` of collections URL
+    :param dataset: `str` of collection identifier
+    :param locale: locale of the request
+
+    :returns: `list` of link objects, empty when the collection has no style
+              provider
+    """
+
+    if not filter_providers_by_type(config.get('providers', []), 'style'):
+        return []
+
+    return [{
+        'type': FORMAT_TYPES[F_JSON],
+        'rel': STYLES_RELTYPE,
+        'title': l10n.translate('Styles to render data in maps as JSON', locale),  # noqa
+        'href': f'{collections_url}/{dataset}/styles?f={F_JSON}'
+    }, {
+        'type': FORMAT_TYPES[F_HTML],
+        'rel': STYLES_RELTYPE,
+        'title': l10n.translate('Styles to render data in maps as HTML', locale),  # noqa
+        'href': f'{collections_url}/{dataset}/styles'
+    }]
+
+
 def _has_global_styles(cfg: Dict) -> bool:
     resources = cfg.get('resources', {})
 

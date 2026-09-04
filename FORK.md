@@ -218,6 +218,35 @@ Note that upstream's `landing_page.html` has no `data['styles']` section, so
 the flag does nothing until a template override adds one. The JSON link works
 today.
 
+## Style links on collections
+
+**File:** `pygeoapi/api/collection.py`, `gen_collection()` — 3 lines, all
+marked `# DIBK`.
+
+```python
+    from pygeoapi.api import styles as styles_api  # DIBK: import loop
+    data['links'].extend(styles_api.get_collection_links(  # DIBK
+        config, api.get_collections_url(), dataset, locale_))  # DIBK
+```
+
+**Why:** a collection with a style provider gave no way to discover its
+styles. `get_collection_links()` returns the two link objects — JSON and
+HTML, both with the
+`http://www.opengis.net/def/rel/ogc/1.0/styles` relation type — or an empty
+list when the collection has no `style` provider, so collections without
+styles are untouched and the upstream collection tests stay green.
+
+Building the links in `pygeoapi/api/styles.py` avoids adding
+`filter_providers_by_type` to `collection.py`'s import list, which would mean
+changing an upstream line rather than adding ones. The import is inside the
+function because `pygeoapi/api/__init__.py` imports `collection` at module
+level, so a module level import of `styles` here would close an import loop.
+
+Note the HTML link points at `/collections/{collectionId}/styles` with no
+`f=html`, because that endpoint answers 415 for HTML until a template exists.
+Its `type` therefore claims `text/html` for what is currently a JSON
+response. Adding `?f=html` would make it an explicit 415 instead.
+
 ## Component definitions from api modules
 
 **File:** `pygeoapi/openapi.py` — 2 lines, both marked `# DIBK`.

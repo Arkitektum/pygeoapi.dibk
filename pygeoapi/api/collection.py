@@ -393,6 +393,10 @@ def gen_collection(api, request, dataset: str,
                     'href': f'{api.get_collections_url()}/{dataset}/schema?f=html'  # noqa
                 })
 
+    from pygeoapi.api import styles as styles_api  # DIBK: import loop
+    data['links'].extend(styles_api.get_collection_links(  # DIBK
+        config, api.get_collections_url(), dataset, locale_))  # DIBK
+
     try:
         edr = get_provider_by_type(config['providers'], 'edr')
         p = load_plugin('provider', edr)
