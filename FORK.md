@@ -183,6 +183,41 @@ collection style provider is configured, matching how the other api modules
 behave, so a deployment without styles gets no `/styles` paths, no `styles`
 tag and no style components.
 
+## Styles on the landing page
+
+**File:** `pygeoapi/api/__init__.py`, `landing_page()` — 5 lines, all marked
+`# DIBK`.
+
+```python
+    from . import styles as styles_api  # DIBK: import loop at module level
+    if styles_api.has_styles(api.config):  # DIBK
+        fcm['links'].append(styles_api.get_landing_page_link(  # DIBK
+            api.base_url, request.locale))  # DIBK
+...
+        fcm['styles'] = styles_api.has_styles(api.config)  # DIBK
+```
+
+**Why:** nothing pointed clients at `/styles`. The link uses the
+`http://www.opengis.net/def/rel/ogc/1.0/styles` relation type, and
+`fcm['styles']` is the flag the HTML template needs to show a styles section.
+
+The link object itself is built in `pygeoapi/api/styles.py`
+(`get_landing_page_link()`), so the rel type, media type, title and href live
+in our own file and the hook stays at four lines. The import is inside the
+function for the same reason `all_apis()` defers its imports.
+
+**Both are gated on `has_styles()`** — a style resource or a collection style
+provider being configured. Two reasons beyond not advertising what an instance
+cannot serve: it matches the `get_oas_30()` gate, and
+`tests/api/test_api.py::test_root` asserts an exact landing page link count
+for the stock test config. An unconditional link breaks that test, and
+deselecting it would blind us to landing page regressions in the one function
+we have hooked.
+
+Note that upstream's `landing_page.html` has no `data['styles']` section, so
+the flag does nothing until a template override adds one. The JSON link works
+today.
+
 ## Component definitions from api modules
 
 **File:** `pygeoapi/openapi.py` — 2 lines, both marked `# DIBK`.

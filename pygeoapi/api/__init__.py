@@ -714,6 +714,11 @@ def landing_page(api: API,
         'href': f"{api.base_url}/TileMatrixSets?f=html"
     }]
 
+    from . import styles as styles_api  # DIBK: import loop at module level
+    if styles_api.has_styles(api.config):  # DIBK
+        fcm['links'].append(styles_api.get_landing_page_link(  # DIBK
+            api.base_url, request.locale))  # DIBK
+
     if api.pubsub_client is not None and not api.pubsub_client.hidden:
         LOGGER.debug('Adding PubSub broker link')
         pubsub_link = {
@@ -770,6 +775,8 @@ def landing_page(api: API,
                         if filter_providers_by_type(value['providers'],
                                                     'tile'):
                             fcm['tile'] = True
+
+        fcm['styles'] = styles_api.has_styles(api.config)  # DIBK
 
         if api.manager.is_async:
             fcm['jobs'] = True

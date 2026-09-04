@@ -33,11 +33,12 @@ import logging
 from http import HTTPStatus
 from typing import Dict, List, Tuple, Any
 
+from pygeoapi import l10n
 from pygeoapi.plugin import load_plugin
 from pygeoapi.util import filter_dict_by_key_value, to_json
 from pygeoapi.provider import filter_providers_by_type
 from pygeoapi.provider.base import ProviderGenericError
-from pygeoapi.formats import F_HTML
+from pygeoapi.formats import FORMAT_TYPES, F_HTML, F_JSON
 from pygeoapi.openapi import OPENAPI_YAML
 
 from . import APIRequest, API, SYSTEM_LOCALE
@@ -52,6 +53,8 @@ CONFORMANCE_CLASSES_STYLES = [
 
 #: Name `pygeoapi.api.conformance()` looks up once we are in `all_apis()`
 CONFORMANCE_CLASSES = CONFORMANCE_CLASSES_STYLES
+
+STYLES_RELTYPE = 'http://www.opengis.net/def/rel/ogc/1.0/styles'
 
 
 class BaseStyleProvider():
@@ -647,6 +650,40 @@ def get_oas_30(cfg: Dict, locale: str) -> Tuple[List[Dict[str, str]], Dict[str, 
     }
 
     return [{'name': 'styles'}], {'paths': paths, 'components': components}
+
+
+def has_styles(cfg: Dict) -> bool:
+    """
+    Whether anything in the configuration serves styles
+
+    Used by `pygeoapi.api.landing_page()` to decide whether to advertise
+    the endpoints at all, and by `get_oas_30()` for the same reason.
+
+    :param cfg: `dict` of configuration
+
+    :returns: `bool` of whether a style resource or a collection style
+              provider is configured
+    """
+
+    return bool(_has_global_styles(cfg) or _get_style_collection_ids(cfg))
+
+
+def get_landing_page_link(base_url: str, locale: str) -> Dict:
+    """
+    Get the landing page link to the styles endpoint
+
+    :param base_url: `str` of server base URL
+    :param locale: locale of the request
+
+    :returns: `dict` of a link object
+    """
+
+    return {
+        'rel': STYLES_RELTYPE,
+        'type': FORMAT_TYPES[F_JSON],
+        'title': l10n.translate('Styles', locale),
+        'href': f'{base_url}/styles?f={F_JSON}'
+    }
 
 
 def _has_global_styles(cfg: Dict) -> bool:
