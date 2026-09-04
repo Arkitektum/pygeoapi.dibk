@@ -265,7 +265,8 @@ def to_json(dict_: dict, pretty: bool = False) -> str:
 
     LOGGER.debug('Dumping JSON')
     json_dump = json.dumps(dict_, default=json_serial, indent=indent,
-                           separators=(',', ':'))
+                           separators=(', ', ': '),  # DIBK
+                           ensure_ascii=False)  # DIBK
 
     LOGGER.debug('Escaping < and >')
     json_dump = json_dump.replace('<', '&lt;')
