@@ -559,6 +559,9 @@ def get_oas_30(cfg: dict, fail_on_invalid_collection: bool = True) -> dict:
 
             oas['paths'].update(sub_paths['paths'])
             oas['tags'].extend(sub_tags)
+
+            for name, defs in sub_paths.get('components', {}).items():  # DIBK
+                oas['components'].setdefault(name, {}).update(defs)  # DIBK
         except Exception as err:
             if fail_on_invalid_collection:
                 raise

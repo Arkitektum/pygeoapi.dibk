@@ -105,8 +105,10 @@ def all_apis() -> dict:
 
     from . import (coverages, environmental_data_retrieval, itemtypes, maps,
                    processes, pubsub, tiles, stac)
+    from . import styles  # DIBK
 
     return {
+        'style': styles,  # DIBK
         'coverage': coverages,
         'edr': environmental_data_retrieval,
         'itemtypes': itemtypes,
@@ -880,6 +882,9 @@ def conformance(api: API, request: APIRequest) -> Tuple[dict, int, str]:
         if value['type'] == 'process':
             conformance_list.extend(
                 apis_dict['process'].CONFORMANCE_CLASSES)
+        elif value['type'] in apis_dict:  # DIBK
+            conformance_list.extend(  # DIBK
+                apis_dict[value['type']].CONFORMANCE_CLASSES)  # DIBK
         else:
             for provider in value['providers']:
                 if provider['type'] in apis_dict:

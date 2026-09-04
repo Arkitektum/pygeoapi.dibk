@@ -38,6 +38,7 @@ from pygeoapi.util import filter_dict_by_key_value, to_json
 from pygeoapi.provider import filter_providers_by_type
 from pygeoapi.provider.base import ProviderGenericError
 from pygeoapi.formats import F_HTML
+from pygeoapi.openapi import OPENAPI_YAML
 
 from . import APIRequest, API, SYSTEM_LOCALE
 
@@ -48,6 +49,9 @@ CONFORMANCE_CLASSES_STYLES = [
     'http://www.opengis.net/spec/ogcapi-styles-1/0.0/conf/sld-10',
     'http://www.opengis.net/spec/ogcapi-styles-1/0.0/conf/sld-11'
 ]
+
+#: Name `pygeoapi.api.conformance()` looks up once we are in `all_apis()`
+CONFORMANCE_CLASSES = CONFORMANCE_CLASSES_STYLES
 
 
 class BaseStyleProvider():
@@ -336,6 +340,12 @@ def get_oas_30(cfg: Dict, locale: str) -> Tuple[List[Dict[str, str]], Dict[str, 
     :returns: `tuple` of `list` of tag objects, and `dict` of path objects
     """
 
+    collection_ids = _get_style_collection_ids(cfg)
+
+    if not _has_global_styles(cfg) and not collection_ids:
+        LOGGER.debug('No style providers configured')
+        return [], {'paths': {}}
+
     paths = {}
 
     paths['/styles'] = {
@@ -501,7 +511,161 @@ def get_oas_30(cfg: Dict, locale: str) -> Tuple[List[Dict[str, str]], Dict[str, 
         }
     }
 
-    return [{'name': 'styles'}], {'paths': paths}
+    link = f"{OPENAPI_YAML['oapit']}#/components/schemas/link"
+
+    # An empty enum would be an invalid schema, so it is only set when at
+    # least one collection has a style provider
+    collection_id_schema: Dict[str, Any] = {'type': 'string'}
+
+    if collection_ids:
+        collection_id_schema['enum'] = collection_ids
+
+    components = {
+        'parameters': {
+            'styleId': {
+                'name': 'styleId',
+                'in': 'path',
+                'description': 'local identifier of a style',
+                'required': True,
+                'schema': {
+                    'type': 'string'
+                }
+            },
+            'collectionIdStyles': {
+                'name': 'collectionId',
+                'in': 'path',
+                'description': 'local identifier of a collection with styles',
+                'required': True,
+                'schema': collection_id_schema
+            }
+        },
+        'schemas': {
+            'style': {
+                'type': 'object',
+                'required': ['id'],
+                'properties': {
+                    'id': {
+                        'description': 'identifier of the style',
+                        'type': 'string'
+                    },
+                    'title': {
+                        'description': 'a human readable title of the style',
+                        'type': 'string'
+                    },
+                    'links': {
+                        'type': 'array',
+                        'items': {'$ref': link}
+                    }
+                }
+            },
+            'styles': {
+                'type': 'object',
+                'required': ['styles'],
+                'properties': {
+                    'styles': {
+                        'type': 'array',
+                        'items': {'$ref': '#/components/schemas/style'}
+                    },
+                    'links': {
+                        'type': 'array',
+                        'items': {'$ref': link}
+                    }
+                }
+            },
+            'stylemetadata': {
+                'type': 'object',
+                'required': ['id'],
+                # The spec allows a long list of optional properties; only
+                # the ones our providers populate are described here.
+                'additionalProperties': True,
+                'properties': {
+                    'id': {
+                        'description': 'identifier of the style',
+                        'type': 'string'
+                    },
+                    'title': {
+                        'description': 'a human readable title of the style',
+                        'type': 'string'
+                    },
+                    'description': {
+                        'description': 'a description of the style',
+                        'type': 'string'
+                    },
+                    'keywords': {
+                        'type': 'array',
+                        'items': {
+                            'type': 'string'
+                        }
+                    },
+                    'version': {
+                        'description': 'the version of the style',
+                        'type': 'string'
+                    },
+                    'stylesheets': {
+                        'type': 'array',
+                        'items': {
+                            'type': 'object',
+                            'properties': {
+                                'title': {
+                                    'type': 'string'
+                                },
+                                'version': {
+                                    'type': 'string'
+                                },
+                                'specification': {
+                                    'type': 'string',
+                                    'format': 'uri'
+                                },
+                                'native': {
+                                    'type': 'boolean'
+                                },
+                                'link': {'$ref': link}
+                            }
+                        }
+                    },
+                    'layers': {
+                        'type': 'array',
+                        'items': {
+                            'type': 'object',
+                            'properties': {
+                                'id': {
+                                    'type': 'string'
+                                },
+                                'type': {
+                                    'type': 'string'
+                                }
+                            }
+                        }
+                    },
+                    'links': {
+                        'type': 'array',
+                        'items': {'$ref': link}
+                    }
+                }
+            }
+        }
+    }
+
+    return [{'name': 'styles'}], {'paths': paths, 'components': components}
+
+
+def _has_global_styles(cfg: Dict) -> bool:
+    resources = cfg.get('resources', {})
+
+    return bool(filter_dict_by_key_value(resources, 'type', 'style'))
+
+
+def _get_style_collection_ids(cfg: Dict) -> List[str]:
+    collection_ids = []
+
+    collections = filter_dict_by_key_value(
+        cfg.get('resources', {}), 'type', 'collection')
+
+    for key, collection in collections.items():
+        if filter_providers_by_type(collection['providers'], 'style'):
+            collection_ids.append(key)
+
+    return collection_ids
 
 
 def _get_provider_def(api: API, style_id: str) -> Dict | None:

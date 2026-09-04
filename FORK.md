@@ -124,18 +124,92 @@ the api-layer contract (take an `APIRequest`, return
 `(headers, status, content)`) and expect a provider plugin of type `style`
 implementing the `BaseStyleProvider` interface declared in the same file.
 
-**Not yet wired up.** The module is inert until three hooks land:
+**Registration** — `pygeoapi/api/__init__.py`, 2 lines in `all_apis()`:
 
-- `styles` in `all_apis()` (`pygeoapi/api/__init__.py`), which is what makes
-  `openapi.py` pick up `get_oas_30()`
-- the routes in `pygeoapi/starlette_app.py`
-- `CONFORMANCE_CLASSES_STYLES` into the conformance declaration
+```python
+    from . import styles  # DIBK
+    ...
+        'style': styles,  # DIBK
+```
 
-The OpenAPI fragment refs `#/components/parameters/styleId`,
+A separate `from . import styles` line rather than an entry in the existing
+import tuple, so a rebase sees an added line instead of a changed one.
+`all_apis()` is the single dispatch table for both `openapi.py` (which calls
+`get_oas_30()` on every registered module) and `conformance()`, so this one
+hook covers the OpenAPI document and the conformance declaration. The module
+exposes `CONFORMANCE_CLASSES` as an alias of `CONFORMANCE_CLASSES_STYLES`,
+because `conformance()` looks up that exact name.
+
+**Still not wired up:** the routes in `pygeoapi/starlette_app.py`. Until they
+land, the OpenAPI document advertises `/styles` and the handlers are
+unreachable.
+
+`get_oas_30()` returns an empty fragment when no style resource and no
+collection style provider is configured, matching how the other api modules
+behave, so a deployment without styles gets no `/styles` paths, no `styles`
+tag and no style components.
+
+## Component definitions from api modules
+
+**File:** `pygeoapi/openapi.py` — 2 lines, both marked `# DIBK`.
+
+```python
+            for name, defs in sub_paths.get('components', {}).items():  # DIBK
+                oas['components'].setdefault(name, {}).update(defs)  # DIBK
+```
+
+**Why:** `get_oas_30()` merges only `sub_paths['paths']` and `sub_tags` from
+each api module, so a module cannot contribute the components its own paths
+reference. Every component in the served document is hardcoded in
+`openapi.py`, extended in place for tiles and queryables.
+
+Our styles fragment refs `#/components/parameters/styleId`,
 `#/components/parameters/collectionIdStyles`, `#/components/schemas/styles`
-and `#/components/schemas/stylemetadata`. None of these exist in
-`pygeoapi/openapi.py` yet, so they have to be added with the `all_apis()` hook
-or the served document will not validate.
+and `#/components/schemas/stylemetadata`. Without this hook those refs dangle
+and the document fails `validate_openapi_document()`.
+
+Merging a `components` key lets the definitions live in
+`pygeoapi/api/styles.py` next to the paths that use them, which keeps the
+upstream surface at two lines instead of a block of schema literals in
+`openapi.py`. The merge is per component group (`parameters`, `schemas`, …)
+and `setdefault` means a module may introduce a group `openapi.py` does not
+already define.
+
+**To drop this commit,** upstream would have to let api modules return their
+own component definitions — worth proposing regardless of styles, since it is
+what the `get_oas_30()` per-module contract is missing.
+
+## conformance() for resource types without providers
+
+**File:** `pygeoapi/api/__init__.py` — 3 lines, all marked `# DIBK`.
+
+```python
+        elif value['type'] in apis_dict:  # DIBK
+            conformance_list.extend(  # DIBK
+                apis_dict[value['type']].CONFORMANCE_CLASSES)  # DIBK
+```
+
+**Why:** `conformance()` special-cases `type: process` and then assumes every
+other resource has a `providers` list:
+
+```python
+        else:
+            for provider in value['providers']:
+```
+
+A global style resource is `type: style` with a single `provider` key (the
+shape `pygeoapi/api/styles.py::_get_provider_defs` reads), so `/conformance`
+raised `KeyError: 'providers'` as soon as one was configured — a 500 on a core
+endpoint, from configuration alone.
+
+Resolving the conformance classes from the resource type when that type maps
+to an api module fixes it and is how a resource-level api module should be
+handled in general. Collection-level style providers keep going through the
+`else` branch. No existing resource type is affected: `collection` and
+`stac-collection` are not keys of `all_apis()`.
+
+**To drop this commit,** upstream would have to stop assuming `providers` is
+present on every non-process resource.
 
 ## Style formats in FORMAT_TYPES
 
