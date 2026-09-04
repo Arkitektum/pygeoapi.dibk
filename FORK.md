@@ -3,6 +3,12 @@
 One section per divergence from upstream. See `CLAUDE.md` for the rules that
 govern how a divergence may be implemented.
 
+Every divergence below is pinned by a test in `tests/dibk/` — a new directory,
+so it never conflicts on rebase. If a rebase drops one of our hooks, a test
+there fails instead of the loss going unnoticed. Run them with the rest of our
+subset (`pytest -c pytest-dibk.ini`) or on their own
+(`pytest -c pytest-dibk.ini tests/dibk`).
+
 ## to_json separators and ensure_ascii
 
 **File:** `pygeoapi/util.py`, `to_json()` — 2 lines, both marked `# DIBK`.
