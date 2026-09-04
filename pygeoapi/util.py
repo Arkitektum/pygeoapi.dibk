@@ -753,13 +753,17 @@ def get_choice_from_headers(headers: dict,
         q_value = float(q_match.group(1)) if q_match else 1.0  # DIBK
 
         # Sort choices by q value and index
-        if 0 <= q_value <= 1:
+        # DIBK: q=0 means "not acceptable" (RFC 9110), so it is excluded here
+        # rather than dividing by zero below.
+        if 0 < q_value <= 1:  # DIBK
             heappush(choices, (1 / q_value, i, value))
 
     # Drop q value
     sorted_choices = [choice[-1] for choice in choices]
 
     # Return one or all choices
+    if not sorted_choices and not all:  # DIBK
+        return None  # DIBK
     return sorted_choices if all else sorted_choices[0]
 
 

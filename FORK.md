@@ -80,8 +80,31 @@ with an anchored `type[;q=x]` regex.
 **Test fallout:** none. `tests/other/test_util.py::test_get_choice_from_headers`
 passes unchanged; it only exercises bare types and sole-`q` parts.
 
-**Pre-existing, not fixed here:** `q=0` is accepted by the `0 <= q_value <= 1`
-guard and then used as `1 / q_value`, which raises `ZeroDivisionError`. This
-is upstream behaviour and is unchanged by our version — `q=0` means "not
-acceptable" and should be skipped, but fixing it would widen the diff beyond
-the parameter problem we hit in production.
+See also the `q=0` divergence below, which touches the same function.
+
+## get_choice_from_headers handles q=0 and empty results
+
+**File:** `pygeoapi/util.py`, `get_choice_from_headers()` — the range guard and
+the final return, marked `# DIBK`.
+
+**Why:** upstream admits `q=0` with `if 0 <= q_value <= 1:` and then computes
+`1 / q_value` as the heap sort key, so `Accept: text/html;q=0` raises
+`ZeroDivisionError`. Per RFC 9110 a weight of zero means "not acceptable", so
+the part must be skipped, not ranked. The guard is now `0 < q_value <= 1`.
+
+Excluding parts makes an empty result reachable — `Accept: text/html;q=0` is a
+header where nothing is acceptable, and an out-of-range weight such as
+`q=1.5` was already excluded upstream. Upstream's
+`sorted_choices if all else sorted_choices[0]` raises `IndexError` in that
+case, so the `all=False` branch now returns `None`, matching the early return
+for a missing header.
+
+`all=True` still returns `[]` rather than `None`: both callers
+(`pygeoapi/api/__init__.py:287`, `:320`) pass `all=True` and treat the result
+as an iterable — `if loc_strs:` and `if types_ is None: return` respectively —
+so an empty list is the value that keeps them working.
+
+**To drop this commit,** upstream would have to treat `q=0` as a rejection and
+return a sentinel instead of indexing an assumed-non-empty list.
+
+**Test fallout:** none.
