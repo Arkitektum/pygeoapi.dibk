@@ -40,3 +40,48 @@ test files, they are deselected in `pytest-dibk.ini`:
 Neither test covers `ensure_ascii`, so nothing about the escaping behaviour is
 left untested by accident — it simply is not tested upstream at all. If the
 `separators` half is ever dropped, remove both deselects.
+
+## get_choice_from_headers tolerates media-type parameters
+
+**File:** `pygeoapi/util.py`, `get_choice_from_headers()` — the parse loop and
+the return annotation, marked `# DIBK`.
+
+**Why:** upstream matches each comma-separated part against
+
+```python
+re.match(r'^([^;]+)(?:;q=([\d.]+))?$', part.strip())
+```
+
+which is anchored, so a part only matches when it is a bare media type or a
+media type whose *sole* parameter is `q`. Any other parameter makes `match`
+`None` and the part is dropped from the choice list entirely. That hits real
+`Accept` headers:
+
+- `application/vnd.ogc.sld+xml;version=1.1.0` — the OGC SE/SLD style types
+  carry a `version` parameter
+- `text/html;charset=utf-8` — routinely sent by clients
+- `text/html;version=1.1.0;q=0.2` — `q` present, but not as the only parameter
+
+Dropped parts do not degrade gracefully. When *every* part carries a
+parameter, `choices` ends up empty and the `all=False` branch raises
+`IndexError` on `sorted_choices[0]`, so content negotiation fails with a 500
+instead of falling back to a default format.
+
+Our version splits the media type off at the first `;` and finds the `q`
+weight with `re.search` wherever it appears in the part, so parameterised
+types are ranked instead of discarded. Media-type parameters are not part of
+the returned value — callers (`pygeoapi/api/__init__.py:287`, `:320`) negotiate
+on the media type alone, as upstream also intended.
+
+**To drop this commit,** upstream would have to parse `Accept` per RFC 9110 —
+media type plus arbitrary parameters, with `q` as one of them — rather than
+with an anchored `type[;q=x]` regex.
+
+**Test fallout:** none. `tests/other/test_util.py::test_get_choice_from_headers`
+passes unchanged; it only exercises bare types and sole-`q` parts.
+
+**Pre-existing, not fixed here:** `q=0` is accepted by the `0 <= q_value <= 1`
+guard and then used as `1 / q_value`, which raises `ZeroDivisionError`. This
+is upstream behaviour and is unchanged by our version — `q=0` means "not
+acceptable" and should be skipped, but fixing it would widen the diff beyond
+the parameter problem we hit in production.
