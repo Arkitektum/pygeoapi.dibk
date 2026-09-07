@@ -400,3 +400,124 @@ now ignore media-type parameters and the versioned style types match.
 **To drop this commit,** upstream would have to ship OGC API - Styles with its
 stylesheet media types registered, or expose a per-resource format hook that
 does not require touching the global table.
+
+## Pre-existing test failures at tag 0.24.0
+
+Recorded 2026-09-07 by running our subset (`pytest -c pytest-dibk.ini`) in a
+clean worktree at tag `0.24.0`, so nothing of ours could affect it. Re-record
+after each rebase onto a new release.
+
+```
+49 failed, 283 passed, 3 deselected, 25 warnings, 14 errors
+```
+
+These fail on the unmodified tag. Before treating a failure as a regression,
+check it against this list — and note that the counts move with the
+environment: the same tag gave 46 failures on an older virtualenv in this
+container, so compare failing test IDs rather than totals.
+
+### Missing optional dependency
+
+`osgeo` (GDAL), `xarray`, `owslib`, `geopandas`, `geoalchemy2`, `sodapy` and
+`pygeometa` are not installed. The 14 collection errors are all of this kind,
+which is why the subset must run with `--continue-on-collection-errors`:
+
+```
+ERROR tests/other/test_ogr_capabilities.py
+ERROR tests/provider/test_csw_provider.py
+ERROR tests/provider/test_csw_provider_live.py
+ERROR tests/provider/test_ogr_csv_provider.py
+ERROR tests/provider/test_ogr_esrijson_provider.py
+ERROR tests/provider/test_ogr_gpkg_provider.py
+ERROR tests/provider/test_ogr_shapefile_provider.py
+ERROR tests/provider/test_ogr_sqlite_provider.py
+ERROR tests/provider/test_ogr_wfs_provider.py
+ERROR tests/provider/test_ogr_wfs_provider_live.py
+ERROR tests/provider/test_parquet_provider.py
+ERROR tests/provider/test_socrata_provider.py
+ERROR tests/provider/test_socrata_provider_live.py
+ERROR tests/provider/test_sql_pool_options.py
+```
+
+Failures from the same cause:
+
+```
+FAILED tests/api/test_coverages.py::test_get_collection_coverage      # xarray
+FAILED tests/api/test_processes.py::test_describe_processes           # pygeometa
+FAILED tests/other/test_openapi.py::test_get_oas                     # xarray
+FAILED tests/other/test_openapi.py::test_get_oas_ogc_service_contact # pygeometa
+FAILED tests/provider/test_api_ogr_provider.py::test_get_collection_items_bbox_crs
+FAILED tests/provider/test_api_ogr_provider.py::test_get_collection_items_crs
+FAILED tests/api/test_api.py::test_describe_collections               # 7 of 10 collections load
+```
+
+### No network access
+
+This container reaches the internet through an allowlisting proxy, so tests
+against live services fail with `ProxyError` or `socket.gaierror`:
+
+```
+FAILED tests/api/test_maps.py::test_get_collection_map
+FAILED tests/api/test_maps.py::test_map_crs_transform
+FAILED tests/api/test_processes.py::test_execute_process
+FAILED tests/api/test_api.py::test_root_structured_data
+FAILED tests/api/test_api.py::test_describe_collections_json_ld
+FAILED tests/other/test_util.py::test_is_request_allowed[https://pygeoapi.io-False-True]
+FAILED tests/other/test_util.py::test_is_request_allowed[https://pygeoapi.io-True-True]
+FAILED tests/provider/test_esri_provider.py::test_query
+FAILED tests/provider/test_esri_provider.py::test_no_count
+FAILED tests/provider/test_esri_provider.py::test_geometry
+FAILED tests/provider/test_esri_provider.py::test_query_bbox
+FAILED tests/provider/test_esri_provider.py::test_query_properties
+FAILED tests/provider/test_esri_provider.py::test_query_sortby_datetime
+FAILED tests/provider/test_esri_provider.py::test_get
+FAILED tests/provider/test_esri_provider.py::test_alternative_id_field
+FAILED tests/provider/test_wms_facade_provider.py::test_crs_query
+```
+
+The two JSON-LD failures need `https://schema.org/docs/jsonldcontext.jsonld`.
+
+### Missing test data or fixtures
+
+```
+FAILED tests/provider/test_sqlite_geopackage_provider.py::test_get_fields_sqlite
+FAILED tests/provider/test_sqlite_geopackage_provider.py::test_query_sqlite
+FAILED tests/provider/test_sqlite_geopackage_provider.py::test_get_fields_geopackage
+FAILED tests/provider/test_sqlite_geopackage_provider.py::test_query_geopackage
+FAILED tests/provider/test_sqlite_geopackage_provider.py::test_query_hits_sqlite_geopackage
+FAILED tests/provider/test_sqlite_geopackage_provider.py::test_query_with_property_filter_sqlite_geopackage
+FAILED tests/provider/test_sqlite_geopackage_provider.py::test_query_with_property_filter_bbox_sqlite_geopackage
+FAILED tests/provider/test_sqlite_geopackage_provider.py::test_query_bbox_sqlite_geopackage
+FAILED tests/provider/test_sqlite_geopackage_provider.py::test_no_count
+FAILED tests/provider/test_sqlite_geopackage_provider.py::test_get_sqlite
+FAILED tests/provider/test_sqlite_geopackage_provider.py::test_get_geopackage
+FAILED tests/provider/test_sqlite_geopackage_provider.py::test_get_sqlite_not_existing_item_raise_exception
+FAILED tests/provider/test_sqlite_geopackage_provider.py::test_get_geopackage_not_existing_item_raise_exception
+FAILED tests/provider/test_sqlite_geopackage_provider.py::test_get_geopackage_skip_geometry
+FAILED tests/provider/test_filesystem_provider.py::test_query
+```
+
+`sqlite.py` raises `ProviderConnectionError` — the SpatiaLite extension is not
+loadable here.
+
+### Upstream test isolation and environment
+
+```
+FAILED tests/api/test_api.py::test_apirules_inactive
+FAILED tests/api/test_api.py::test_api_exception
+FAILED tests/api/test_api.py::test_gzip
+FAILED tests/other/test_l10n.py::test_translate_gettext
+FAILED tests/other/test_crs.py::test_modify_pygeofilter[unnested-geometry-transformed-coords-explicit-input-crs-ewkt]
+FAILED tests/other/test_crs.py::test_modify_pygeofilter[unnested-geometry-transformed-coords-explicit-input-crs-filter-crs]
+FAILED tests/other/test_crs.py::test_modify_pygeofilter[unnested-geometry-transformed-coords-ewkt-crs-overrides-filter-crs]
+FAILED tests/provider/test_base_provider.py::test_unique_subclass_query_types
+FAILED tests/api/test_environmental_data_retrieval.py::test_describe_collection_edr
+FAILED tests/api/test_environmental_data_retrieval.py::test_get_collection_edr_query
+FAILED tests/api/test_environmental_data_retrieval.py::test_get_collection_edr_query_crs
+```
+
+The three `test_api.py` failures are `KeyError: 'pygeoapi.flask_app'` from
+`mock_flask` in `tests/util.py`, the Flask twin of the `mock_starlette` reload
+problem described at the top of this file. `test_translate_gettext` wants
+compiled locale catalogues. The EDR failures are `KeyError:
+'parameter_names'`, from the xarray provider being unavailable.
