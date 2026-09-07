@@ -50,6 +50,10 @@ from pyproj.exceptions import CRSError
 from pygeoapi import l10n
 from pygeoapi.api import evaluate_limit
 from pygeoapi.api.pubsub import publish_message
+from pygeoapi.api.dataset_formatters import (get_alternate_links,  # DIBK
+                                             is_formatter_format,  # DIBK
+                                             negotiate_dataset_format,  # DIBK
+                                             write_item)  # DIBK
 from pygeoapi.api.synthetic_properties import strip_synthetic_properties  # noqa DIBK
 from pygeoapi.crs import (DEFAULT_CRS, DEFAULT_STORAGE_CRS,
                           create_crs_transform_spec, get_supported_crs_list,
@@ -919,6 +923,12 @@ def get_collection_item(api: API, request: APIRequest,
             err.http_status_code, headers, request.format,
             err.ogc_exception_code, err.message)
 
+    # DIBK: the app modules call this handler with skip_valid_check, because
+    # the formats a collection accepts are only known here
+    dataset_formatters = get_dataset_formatters(collections[dataset])  # DIBK
+    if not negotiate_dataset_format(request, dataset_formatters):  # DIBK
+        return api.get_format_exception(request)  # DIBK
+
     crs_transform_spec = None
     if provider_type == 'feature':
         # crs query parameter is only available for OGC API - Features
@@ -955,6 +965,9 @@ def get_collection_item(api: API, request: APIRequest,
         msg = 'identifier not found'
         return api.get_exception(HTTPStatus.BAD_REQUEST, headers,
                                  request.format, 'NotFound', msg)
+
+    if not is_formatter_format(request, dataset_formatters):  # DIBK
+        strip_synthetic_properties([content], p)  # DIBK
 
     uri = content['properties'].get(p.uri_field) if p.uri_field else \
         f'{api.get_collections_url()}/{dataset}/items/{identifier}'
@@ -995,8 +1008,11 @@ def get_collection_item(api: API, request: APIRequest,
         'href': f'{api.get_collections_url()}/{dataset}'
     }])
 
+    content['links'].extend(  # DIBK
+        get_alternate_links(dataset_formatters, uri))  # DIBK
+
     link_request_format = (
-        request.format if request.format is not None else F_JSON
+        request.format if request.format in FORMAT_TYPES else F_JSON  # DIBK
     )
     if 'prev' in content:
         content['links'].append({
@@ -1032,6 +1048,10 @@ def get_collection_item(api: API, request: APIRequest,
                                      'collections/items/item.html',
                                      content, request.locale)
         return headers, HTTPStatus.OK, content
+
+    elif is_formatter_format(request, dataset_formatters):  # DIBK
+        return write_item(api, request, headers, dataset, p,  # DIBK
+                          provider_def, dataset_formatters, content)  # DIBK
 
     elif request.format == F_JSONLD:
         content = geojson2jsonld(

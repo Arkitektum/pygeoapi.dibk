@@ -341,6 +341,59 @@ opt-in per formatter would need a flag on the formatter definition.
 **To drop this commit,** upstream would have to give providers a way to pass
 data to a formatter out of band, rather than through the feature properties.
 
+## Custom formatters on a single item
+
+**Files:** `pygeoapi/api/dataset_formatters.py` — a new file. Hooked from
+`pygeoapi/api/itemtypes.py::get_collection_item()` with 12 lines, all marked
+`# DIBK`, and one line each in `pygeoapi/flask_app.py` and
+`pygeoapi/starlette_app.py`.
+
+**Why:** `get_collection_items()` negotiates a collection's configured
+formatters and runs them; `get_collection_item()` does neither. A custom
+format is therefore available on the item list but not on an individual
+feature, which is the request a client makes when it wants one thing.
+
+The hooks, in order through the function:
+
+1. `negotiate_dataset_format()` — the same re-negotiation
+   `get_collection_items()` does inline, because the formats a collection
+   accepts are not known until its configuration is read.
+2. `strip_synthetic_properties()` on the single feature, for the same reason
+   as on the item list.
+3. `get_alternate_links()` — one `alternate` link per formatter.
+4. `write_item()` — wraps the feature in a FeatureCollection, since that is
+   what a formatter takes, then writes it and sets `Content-Type` and
+   `Content-Disposition`.
+
+**`skip_valid_check=True` in both app modules.** `execute_from_flask` and
+`execute_from_starlette` validate the request format before calling the
+handler, using only the global `FORMAT_TYPES`, so `?f=<custom>` was rejected
+with 400 before the handler could read the collection's formatters. The item
+*list* call already passed `skip_valid_check=True` upstream; the single item
+call did not. Validation is not lost — hook 1 rejects an unknown format with
+the same 400 — and `tests/dibk/test_item_formatters.py` asserts that through
+both frameworks.
+
+**`link_request_format` had to change**, 1 line:
+
+```python
+    link_request_format = (
+        request.format if request.format in FORMAT_TYPES else F_JSON  # DIBK
+    )
+```
+
+Upstream tests `request.format is not None` and then indexes
+`FORMAT_TYPES[link_request_format]`, so any format belonging to a formatter
+raises `KeyError`. This is not only our problem: `?f=csv` on a provider whose
+`get()` returns `prev` or `next` already raises it upstream, since `csv` is a
+formatter format and not in `FORMAT_TYPES` either.
+
+`write_item()` passes the provider definition already loaded in the function
+as the formatter's `provider_def` option, rather than calling
+`get_provider_by_type(..., 'feature')` again the way `get_collection_items()`
+does. Same value for a feature collection, and it does not raise
+`ProviderTypeError` on a record collection.
+
 ## Content-Disposition for inline formatters
 
 **File:** `pygeoapi/api/itemtypes.py`, `get_collection_items()` — 3 lines, all

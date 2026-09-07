@@ -63,21 +63,47 @@ class SyntheticProvider(BaseProvider):
     def get_fields(self):
         return self._fields
 
+    def _feature(self, identifier: str = '1') -> dict:
+        return {
+            'type': 'Feature',
+            'id': identifier,
+            'geometry': {'type': 'Point', 'coordinates': [10.7, 59.9]},
+            'properties': {
+                'stedsnavn': 'Bærum',
+                SYNTHETIC_KEY: GML
+            }
+        }
+
     def query(self, **kwargs):
         return {
             'type': 'FeatureCollection',
             'numberMatched': 1,
             'numberReturned': 1,
-            'features': [{
-                'type': 'Feature',
-                'id': '1',
-                'geometry': {'type': 'Point', 'coordinates': [10.7, 59.9]},
-                'properties': {
-                    'stedsnavn': 'Bærum',
-                    SYNTHETIC_KEY: GML
-                }
-            }]
+            'features': [self._feature()]
         }
+
+    def get(self, identifier, **kwargs):
+        if identifier != '1':
+            return None
+
+        return self._feature(identifier)
+
+
+class PagedProvider(SyntheticProvider):
+    """Provider whose items carry prev/next, as records providers do
+
+    `get_collection_item()` feeds the requested format into `FORMAT_TYPES`
+    when building those links, so this is what a custom format has to survive.
+    """
+
+    def get(self, identifier, **kwargs):
+        feature = super().get(identifier, **kwargs)
+
+        if feature is not None:
+            feature['prev'] = '0'
+            feature['next'] = '2'
+
+        return feature
 
 
 class _GmlFormatter(BaseFormatter):

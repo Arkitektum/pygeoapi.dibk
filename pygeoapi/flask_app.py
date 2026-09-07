@@ -325,7 +325,8 @@ def collection_items(collection_id: str, item_id: str | None = None):
                                   skip_valid_check=True)
     else:
         return execute_from_flask(itemtypes_api.get_collection_item, request,
-                                  collection_id, item_id)
+                                  collection_id, item_id,
+                                  skip_valid_check=True)  # DIBK
 
 
 @BLUEPRINT.route('/collections/<path:collection_id>/coverage')
