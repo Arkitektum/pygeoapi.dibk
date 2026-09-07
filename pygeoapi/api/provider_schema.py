@@ -43,9 +43,6 @@ from pygeoapi import l10n
 
 LOGGER = logging.getLogger(__name__)
 
-#: Keys pygeoapi owns: a provider schema does not get to set its own identity
-SCHEMA_IDENTITY_KEYS = ('$schema', '$id', 'title')
-
 
 def apply_provider_schema(p, schema: Dict[str, Any],
                           resource_config: Dict[str, Any],
@@ -53,10 +50,11 @@ def apply_provider_schema(p, schema: Dict[str, Any],
     """
     Replace a derived collection schema with the provider's own, if it has one
 
-    The identity keys pygeoapi generated (`$schema`, `$id`, `title`) always
-    win, so a provider cannot claim a different `$id` than the endpoint it is
-    served from. The collection description is added here for both paths,
-    since the derived schema does not carry one.
+    `$id` is always the endpoint serving the schema: a provider does not get
+    to claim an identity of its own. `$schema` is the provider's, so a schema
+    written against another dialect is not mislabelled. `title` and
+    `description` come from the collection configuration, the latter being
+    something the derived schema does not carry at all.
 
     :param p: provider plugin instance
     :param schema: `dict` of the schema derived from the provider's fields
@@ -76,12 +74,24 @@ def apply_provider_schema(p, schema: Dict[str, Any],
         if provider_schema is None:
             LOGGER.debug('No provider schema; using the derived one')
 
-    identity = {key: schema[key] for key in SCHEMA_IDENTITY_KEYS
-                if key in schema}
+    served = provider_schema if provider_schema is not None else schema
+
+    leading = {
+        # The dialect belongs to whoever wrote the schema
+        '$schema': served.get('$schema') or schema['$schema'],
+        # The identity is ours: it is the endpoint this is served from
+        '$id': schema['$id'],
+        'title': schema['title']
+    }
 
     description = resource_config.get('description')
 
     if description:
-        identity['description'] = l10n.translate(description, locale)
+        leading['description'] = l10n.translate(description, locale)
 
-    return (provider_schema or schema) | identity
+    # Emit the keywords above first, then whatever else the schema has, so
+    # the document reads $schema, $id, title, description, type, properties
+    rest = {key: value for key, value in served.items()
+            if key not in leading}
+
+    return leading | rest

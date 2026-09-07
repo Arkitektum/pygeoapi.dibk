@@ -237,15 +237,27 @@ advertises a flat property list instead of the actual schema, losing
 A provider opts in by implementing `get_collection_schema()`. Providers
 without the method, which is all of upstream's, are unaffected.
 
-**pygeoapi keeps `$schema`, `$id` and `title`.** A provider schema is merged
-under them, so it cannot claim an `$id` other than the endpoint serving it.
-Note the consequence for `$schema`: a schema written against
-draft 2020-12 is served declaring pygeoapi's draft 2019-09. Drop `'$schema'`
-from `SCHEMA_IDENTITY_KEYS` if the provider's dialect should win.
+**Who owns which keyword:**
+
+| keyword | comes from | why |
+| --- | --- | --- |
+| `$schema` | the provider, when it declares one | the dialect belongs to whoever wrote the schema; a 2020-12 document must not be served as 2019-09 |
+| `$id` | always the server | it is the endpoint the schema is served from, not something a provider may claim |
+| `title` | the collection configuration | one collection, one title, however the schema was produced |
+| `description` | the collection configuration | see below |
+
+Providers without a `$schema` fall back to pygeoapi's draft 2019-09, so the
+derived path is unchanged.
 
 **The collection description is now in the schema** for both paths — derived
 and provider supplied. Upstream puts `title` in the schema but not
 `description`. No upstream test asserted its absence.
+
+**Keyword order is `$schema`, `$id`, `title`, `description`**, then whatever
+else the schema carries in its own order. Upstream emitted the derived schema
+as `type`, `title`, `properties`, `$schema`, `$id`, which reads oddly with
+`$id` buried at the end. This is presentation only; JSON object member order
+carries no meaning, and `to_json` preserves insertion order.
 
 **The derived schema is still computed** even when the provider supplies its
 own, and then discarded. That is deliberate: the alternative is either

@@ -88,15 +88,41 @@ def test_provider_schema_is_served(config):
         'Navn på stedet, f.eks. Bærum'
 
 
-def test_provider_schema_cannot_override_identity(config):
-    """pygeoapi owns $schema, $id and title: the endpoint is the identity."""
+def test_server_owns_the_id(config):
+    """A provider cannot claim an $id other than the endpoint serving it."""
 
     schema = _schema(_config_with_provider(config, SCHEMA_PROVIDER))
 
+    assert schema['$id'] == 'http://localhost:5000/collections/obs/schema'
+
+
+def test_provider_keeps_its_dialect(config):
+    """$schema belongs to whoever wrote the schema, not to us."""
+
+    schema = _schema(_config_with_provider(config, SCHEMA_PROVIDER))
+
+    assert schema['$schema'] == 'http://json-schema.org/draft/2020-12/schema'
+
+
+def test_derived_schema_keeps_pygeoapi_dialect(config):
+    schema = _schema(_config_with_provider(config, FIELDS_ONLY_PROVIDER))
+
     assert schema['$schema'] == 'http://json-schema.org/draft/2019-09/schema'
-    assert schema['$id'] == \
-        'http://localhost:5000/collections/obs/schema'
+
+
+def test_title_comes_from_config(config):
+    schema = _schema(_config_with_provider(config, SCHEMA_PROVIDER))
+
     assert schema['title'] == 'Observations'
+
+
+@pytest.mark.parametrize('provider', [SCHEMA_PROVIDER, FIELDS_ONLY_PROVIDER])
+def test_leading_key_order(config, provider):
+    """The document must read $schema, $id, title, description, ..."""
+
+    schema = _schema(_config_with_provider(config, provider))
+
+    assert list(schema)[:4] == ['$schema', '$id', 'title', 'description']
 
 
 def test_provider_schema_description_comes_from_config(config):
