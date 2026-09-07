@@ -218,6 +218,55 @@ Note that upstream's `landing_page.html` has no `data['styles']` section, so
 the flag does nothing until a template override adds one. The JSON link works
 today.
 
+## Provider supplied collection schemas
+
+**Files:** `pygeoapi/api/provider_schema.py` — a new file. Hooked from
+`pygeoapi/api/__init__.py` with 3 lines, all marked `# DIBK`: the import and
+
+```python
+    schema = apply_provider_schema(  # DIBK
+        p, schema, api.config['resources'][dataset], request.locale)  # DIBK
+```
+
+**Why:** `get_collection_schema()` only ever derives a schema from the
+provider's field list, so a provider that already has a real JSON Schema — one
+of ours reads them from disk — has no way to serve it. `/schema` then
+advertises a flat property list instead of the actual schema, losing
+`required`, nested objects, enumerations and per-property documentation.
+
+A provider opts in by implementing `get_collection_schema()`. Providers
+without the method, which is all of upstream's, are unaffected.
+
+**pygeoapi keeps `$schema`, `$id` and `title`.** A provider schema is merged
+under them, so it cannot claim an `$id` other than the endpoint serving it.
+Note the consequence for `$schema`: a schema written against
+draft 2020-12 is served declaring pygeoapi's draft 2019-09. Drop `'$schema'`
+from `SCHEMA_IDENTITY_KEYS` if the provider's dialect should win.
+
+**The collection description is now in the schema** for both paths — derived
+and provider supplied. Upstream puts `title` in the schema but not
+`description`. No upstream test asserted its absence.
+
+**The derived schema is still computed** even when the provider supplies its
+own, and then discarded. That is deliberate: the alternative is either
+indenting upstream's thirty-line derivation under a conditional, or
+duplicating the HTML and JSON response tail in our module to return early.
+Three hook lines and one wasted field walk is the cheaper trade. If a
+provider's `fields` is expensive, revisit it.
+
+Keeping upstream's derivation in place also preserves the `p.properties`
+whitelist filter:
+
+```python
+        if p.properties:
+            if k not in p.properties:
+                continue
+```
+
+which a rewrite of the function into a helper is easy to lose — that would
+silently expose fields a collection deliberately hides.
+`tests/dibk/test_provider_schema.py` covers it.
+
 ## Style links on collections
 
 **File:** `pygeoapi/api/collection.py`, `gen_collection()` — 3 lines, all

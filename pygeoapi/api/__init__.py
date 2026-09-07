@@ -57,6 +57,7 @@ import pytz
 
 from pygeoapi import __version__, l10n
 from pygeoapi.api.collection import gen_collection, OGC_RELTYPES_BASE
+from pygeoapi.api.provider_schema import apply_provider_schema  # DIBK
 from pygeoapi.formats import FORMAT_TYPES, F_GZIP, F_HTML, F_JSON, F_JSONLD
 from pygeoapi.linked_data import jsonldify, jsonldify_collection
 from pygeoapi.log import setup_logger
@@ -1102,6 +1103,9 @@ def get_collection_schema(api: API, request: Union[APIRequest, Any],
             schema['properties'][k]['x-ogc-role'] = 'id'
         if k == p.time_field:
             schema['properties'][k]['x-ogc-role'] = 'primary-instant'
+
+    schema = apply_provider_schema(  # DIBK
+        p, schema, api.config['resources'][dataset], request.locale)  # DIBK
 
     if request.format == F_HTML:  # render
         tpl_config = api.get_dataset_templates(dataset)
