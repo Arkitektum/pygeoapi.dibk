@@ -50,6 +50,7 @@ from pyproj.exceptions import CRSError
 from pygeoapi import l10n
 from pygeoapi.api import evaluate_limit
 from pygeoapi.api.pubsub import publish_message
+from pygeoapi.api.synthetic_properties import strip_synthetic_properties  # noqa DIBK
 from pygeoapi.crs import (DEFAULT_CRS, DEFAULT_STORAGE_CRS,
                           create_crs_transform_spec, get_supported_crs_list,
                           modify_pygeofilter, transform_bbox,
@@ -566,6 +567,12 @@ def get_collection_items(
             err.http_status_code, headers, request.format,
             err.ogc_exception_code, err.message)
 
+    # DIBK: formatter-only properties must not reach GeoJSON, JSON-LD or
+    # HTML output, but the formatter path below still needs them
+    formatter_formats = [df.f for df in dataset_formatters.values()]  # DIBK
+    if request.format not in formatter_formats:  # DIBK
+        strip_synthetic_properties(content.get('features', []), p)  # DIBK
+
     serialized_query_params = ''
     for k, v in request.params.items():
         if k not in ('f', 'offset'):
@@ -715,6 +722,9 @@ def get_collection_items(
 
             cd = f'attachment; filename="{filename}"'
             headers['Content-Disposition'] = cd
+        else:  # DIBK: render inline, but still name the download
+            filename = p.filename or f'{dataset}.{formatter.extension}'  # DIBK
+            headers['Content-Disposition'] = f'inline; filename="{filename}"'  # noqa DIBK
 
         return headers, HTTPStatus.OK, content
 

@@ -309,6 +309,58 @@ which a rewrite of the function into a helper is easy to lose — that would
 silently expose fields a collection deliberately hides.
 `tests/dibk/test_provider_schema.py` covers it.
 
+## Formatter-only provider properties
+
+**Files:** `pygeoapi/api/synthetic_properties.py` — a new file. Hooked from
+`pygeoapi/api/itemtypes.py::get_collection_items()` with 4 lines, all marked
+`# DIBK`: the import and
+
+```python
+    formatter_formats = [df.f for df in dataset_formatters.values()]  # DIBK
+    if request.format not in formatter_formats:  # DIBK
+        strip_synthetic_properties(content.get('features', []), p)  # DIBK
+```
+
+**Why:** a provider may put values into `feature['properties']` that exist
+only as input for a custom formatter. Ours does: `postgresql_ext` with
+`gml_passthrough` adds `_geometry_gml`, holding the GML the database produced,
+which the GML formatter writes out verbatim. Without stripping, that key also
+appears in the GeoJSON, JSON-LD and HTML output, where it is noise at best and
+a duplicated geometry at worst.
+
+The provider declares the keys in `synthetic_property_keys`; providers that
+declare nothing are untouched, which is all of upstream's.
+
+**Stripping is per output kind, not per formatter.** Any request whose format
+belongs to a formatter keeps the keys — including the built-in CSV formatter,
+so `?f=csv` shows `_geometry_gml` as a column.
+`tests/dibk/test_synthetic_properties.py::test_every_formatter_gets_the_key`
+pins that, because it is a consequence rather than an intention. Making it
+opt-in per formatter would need a flag on the formatter definition.
+
+**To drop this commit,** upstream would have to give providers a way to pass
+data to a formatter out of band, rather than through the feature properties.
+
+## Content-Disposition for inline formatters
+
+**File:** `pygeoapi/api/itemtypes.py`, `get_collection_items()` — 3 lines, all
+marked `# DIBK`.
+
+```python
+        else:  # DIBK: render inline, but still name the download
+            filename = p.filename or f'{dataset}.{formatter.extension}'  # DIBK
+            headers['Content-Disposition'] = f'inline; filename="{filename}"'
+```
+
+**Why:** upstream sets `Content-Disposition` only when the formatter declares
+`attachment: true`. For a formatter meant to render in the browser, no header
+is sent at all, so a user choosing Save As gets a filename derived from the
+last path segment of the URL — `items`, with no extension.
+
+Added as an `else` on upstream's `if formatter.attachment:` rather than by
+making the block unconditional, which would have meant reindenting six
+upstream lines. The attachment path is byte-identical to upstream.
+
 ## Style links on collections
 
 **File:** `pygeoapi/api/collection.py`, `gen_collection()` — 3 lines, all
