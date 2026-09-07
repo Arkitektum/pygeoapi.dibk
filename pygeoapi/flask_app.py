@@ -46,6 +46,7 @@ import pygeoapi.api.maps as maps_api
 import pygeoapi.api.processes as processes_api
 import pygeoapi.api.stac as stac_api
 import pygeoapi.api.tiles as tiles_api
+from pygeoapi.flask_styles import register_style_routes  # DIBK
 from pygeoapi.asyncapi import load_asyncapi_document
 from pygeoapi.openapi import load_openapi_document
 from pygeoapi.config import get_config
@@ -645,6 +646,8 @@ def admin_config_resource(resource_id: str):
                                   resource_id,
                                   alternative_api=admin_)
 
+
+register_style_routes(BLUEPRINT)  # DIBK: must precede the registration below
 
 APP.register_blueprint(BLUEPRINT)
 

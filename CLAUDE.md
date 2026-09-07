@@ -20,10 +20,14 @@ to an existing upstream file is a future rebase conflict.
 
 ## Scope
 
-Starlette only. Do not touch `pygeoapi/flask_app.py`.
+Starlette and Flask. Django is out of scope — leave `pygeoapi/django_/` and
+`pygeoapi/django_app.py` alone.
 
 Handlers go in the framework-agnostic api layer (take an `APIRequest`, return
-`(headers, status, content)`) and are registered only in `pygeoapi/starlette_app.py`.
+`(headers, status, content)`). Registering them is per framework: routes for
+Starlette in `pygeoapi/starlette_app.py`, for Flask in
+`pygeoapi/flask_app.py`. Anything added to one must be added to the other, and
+tested against both — `tests/util.py` has `mock_starlette` and `mock_flask`.
 
 ## Verify
 

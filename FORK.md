@@ -176,7 +176,37 @@ route uses the `:path` converter, so anything after it would swallow
 `/collections/{collectionId}/styles`; `tests/dibk/test_starlette_styles.py`
 asserts the ordering rather than trusting it.
 
-Flask is untouched, per the Starlette-only scope in `CLAUDE.md`.
+**Routes** — `pygeoapi/flask_app.py`, 2 lines:
+
+```python
+from pygeoapi.flask_styles import register_style_routes  # DIBK
+...
+register_style_routes(BLUEPRINT)  # DIBK: must precede the registration below
+```
+
+`pygeoapi/flask_styles.py` mirrors `starlette_styles.py`: the same four
+endpoints over the same api handlers, kept out of the app module for the same
+reason, with `execute_from_flask` imported inside each handler to avoid the
+import loop.
+
+Two differences, both Flask's:
+
+- Rules are added with `blueprint.add_url_rule()` rather than
+  `@BLUEPRINT.route`, because the blueprint is created in `flask_app` and this
+  module must not import it.
+- The call has to precede `APP.register_blueprint(BLUEPRINT)`. Flask rejects
+  rules added to an already registered blueprint. `mock_flask` reloads the
+  module, which rebuilds `BLUEPRINT`, so this runs again on a fresh blueprint
+  and does not double-register.
+
+Route order does not matter here the way it does under Starlette: Werkzeug
+matches on rule specificity rather than declaration order, which is why
+upstream's `/collections/<path:collection_id>/schema` already coexists with
+`/collections/<path:collection_id>`. `tests/dibk/test_flask_styles.py` asserts
+the collection routes still resolve anyway.
+
+Django is deliberately not wired up: `pygeoapi/django_/urls.py` would need the
+same treatment and nothing here uses it. `CLAUDE.md` records that scope.
 
 `get_oas_30()` returns an empty fragment when no style resource and no
 collection style provider is configured, matching how the other api modules
