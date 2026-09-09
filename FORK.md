@@ -548,6 +548,33 @@ now ignore media-type parameters and the versioned style types match.
 stylesheet media types registered, or expose a per-resource format hook that
 does not require touching the global table.
 
+## Local version identifier
+
+**File:** `pygeoapi/__init__.py` — 1 line, marked `# DIBK`.
+
+```python
+__version__ = '0.24.0+dibk1'  # DIBK
+```
+
+**Why:** the deploy image installs our wheel over
+`geopython/pygeoapi:0.24.0`, so without a distinguishing version there is no
+way to tell from a running container whether it serves upstream 0.24.0 or our
+build. `+dibk1` is a PEP 440 local version identifier: it compares equal in
+release ordering to plain `0.24.0` and keeps `python3 -m build --wheel`
+producing an installable `pygeoapi-0.24.0+dibk1-py3-none-any.whl`.
+
+The value reaches clients on its own — `pygeoapi/api/__init__.py` puts it in
+`X-Powered-By`, `pygeoapi/util.py` in `X-API-Version` and the HTML templates,
+and `pygeoapi/asyncapi.py` in the AsyncAPI document. Nothing else had to
+change; every reader imports `__version__` rather than hardcoding a number.
+
+Bump the suffix (`+dibk2`, …) when a new wheel goes out against the same
+upstream release, and reset it to `1` when rebasing onto the next one.
+
+**To drop this commit,** upstream would have to accept a build-time version
+override — there is none today; `setup.py::get_package_version()` regexes the
+string out of this file.
+
 ## Pre-existing test failures at tag 0.24.0
 
 Recorded 2026-09-07 by running our subset (`pytest -c pytest-dibk.ini`) in a
