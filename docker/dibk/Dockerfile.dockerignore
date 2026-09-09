@@ -1,0 +1,44 @@
+# Build context excludes for docker/dibk/Dockerfile only.
+#
+# BuildKit picks up "<dockerfile>.dockerignore" next to the Dockerfile
+# and uses it INSTEAD OF the root .dockerignore — the two are not
+# merged. So this file has to repeat what upstream's root
+# .dockerignore already excludes; check that file after a rebase in
+# case upstream added an entry.
+#
+# Patterns are relative to the build context root (the repository
+# root), not to this directory.
+#
+# The wheel build in stage 1 needs setup.py, pyproject.toml,
+# MANIFEST.in, README.md, LICENSE.md, requirements.txt and pygeoapi/.
+# Nothing here may exclude those.
+
+# --- from upstream's root .dockerignore --------------------------
+.git
+.github
+.pytest_cache
+.mypy_cache
+build
+dist
+pygeoapi.egg-info
+
+# --- ours --------------------------------------------------------
+
+# A local virtualenv is easily a gigabyte of build context, and the
+# root .dockerignore does not cover it.
+.venv
+venv
+
+__pycache__
+*.pyc
+
+# Not part of the distribution: docs, tests, and the Docker files
+# themselves (this Dockerfile is passed with -f, not read from the
+# context).
+docs
+tests
+docker
+
+# Never let an environment-specific config reach an image.
+local.config.yml
+*.env

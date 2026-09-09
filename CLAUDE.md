@@ -73,8 +73,10 @@ hooks land.
 python3 -m build --wheel        # → dist/pygeoapi-0.24.0+dibk1-py3-none-any.whl
 ```
 
-Deploy image is `FROM geopython/pygeoapi:0.24.0` plus
-`pip install --no-deps --force-reinstall` of that wheel.
+## Docker
+
+Our Docker files live in `docker/dibk/`. Never edit `/Dockerfile` or
+`docker/entrypoint.sh`.
 
 ## Dev loop
 
