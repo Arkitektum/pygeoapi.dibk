@@ -373,6 +373,7 @@ def get_collection_items(
         return api.get_format_exception(request)
 
     crs_transform_spec = None
+    query_crs_uri = None  # DIBK: only bound for 'feature' providers below
     if provider_type == 'feature':
         # crs query parameter is only available for OGC API - Features
         # right now, not for OGC API - Records.
@@ -930,6 +931,7 @@ def get_collection_item(api: API, request: APIRequest,
         return api.get_format_exception(request)  # DIBK
 
     crs_transform_spec = None
+    query_crs_uri = None  # DIBK: only bound for 'feature' providers below
     if provider_type == 'feature':
         # crs query parameter is only available for OGC API - Features
         # right now, not for OGC API - Records.
@@ -1051,7 +1053,8 @@ def get_collection_item(api: API, request: APIRequest,
 
     elif is_formatter_format(request, dataset_formatters):  # DIBK
         return write_item(api, request, headers, dataset, p,  # DIBK
-                          provider_def, dataset_formatters, content)  # DIBK
+                          provider_def, dataset_formatters, content,  # DIBK
+                          query_crs_uri)  # DIBK
 
     elif request.format == F_JSONLD:
         content = geojson2jsonld(

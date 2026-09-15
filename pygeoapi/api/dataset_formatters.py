@@ -39,7 +39,7 @@ small.
 
 import logging
 from http import HTTPStatus
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from pygeoapi.formatter.base import FormatterSerializationError
 
@@ -104,7 +104,8 @@ def get_alternate_links(dataset_formatters: Dict, uri: str) -> List[Dict]:
 
 def write_item(api, request, headers: Dict, dataset: str, p,
                provider_def: Dict, dataset_formatters: Dict,
-               feature: Dict) -> Tuple[Dict, int, str]:
+               feature: Dict,
+               content_crs: Optional[str] = None) -> Tuple[Dict, int, str]:
     """
     Run the requested formatter over a single feature
 
@@ -119,6 +120,7 @@ def write_item(api, request, headers: Dict, dataset: str, p,
     :param provider_def: `dict` of the provider definition
     :param dataset_formatters: `dict` of formatters, keyed by name
     :param feature: `dict` of the GeoJSON feature to write
+    :param content_crs: `str` of the CRS URI the feature is returned in
 
     :returns: tuple of headers, status code, content
     """
@@ -130,7 +132,8 @@ def write_item(api, request, headers: Dict, dataset: str, p,
 
     try:
         content = formatter.write(
-            data=data, options={'provider_def': provider_def})
+            data=data, options={'content_crs': content_crs,
+                                'provider_def': provider_def})
     except FormatterSerializationError:
         msg = 'Error serializing output'
         return api.get_exception(

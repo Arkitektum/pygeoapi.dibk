@@ -130,7 +130,10 @@ class _GmlFormatter(BaseFormatter):
         members = [feature['properties'].get(SYNTHETIC_KEY, '')
                    for feature in features]
 
-        return f"<wfs:FeatureCollection>{''.join(members)}"\
+        content_crs = options.get('content_crs')
+        srs_name = f' srsName="{content_crs}"' if content_crs else ''
+
+        return f"<wfs:FeatureCollection{srs_name}>{''.join(members)}"\
                '</wfs:FeatureCollection>'
 
 

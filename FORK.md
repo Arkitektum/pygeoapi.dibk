@@ -344,7 +344,7 @@ data to a formatter out of band, rather than through the feature properties.
 ## Custom formatters on a single item
 
 **Files:** `pygeoapi/api/dataset_formatters.py` — a new file. Hooked from
-`pygeoapi/api/itemtypes.py::get_collection_item()` with 12 lines, all marked
+`pygeoapi/api/itemtypes.py::get_collection_item()` with 14 lines, all marked
 `# DIBK`, and one line each in `pygeoapi/flask_app.py` and
 `pygeoapi/starlette_app.py`.
 
@@ -393,6 +393,18 @@ as the formatter's `provider_def` option, rather than calling
 `get_provider_by_type(..., 'feature')` again the way `get_collection_items()`
 does. Same value for a feature collection, and it does not raise
 `ProviderTypeError` on a record collection.
+
+**The `content_crs` option**, 1 line at the `write_item()` call plus
+`query_crs_uri = None` ahead of the `provider_type == 'feature'` block.
+`get_collection_items()` passes the requested CRS to `formatter.write()` as the
+`content_crs` option, so a formatter can name the CRS its geometries are in;
+the single item has to pass the same thing or the same formatter emits a
+different document for one feature than for a list.
+
+`query_crs_uri` is only assigned inside the `provider_type == 'feature'` block,
+so it is unbound for a record collection. Upstream already reads it after that
+block in `get_collection_items()` — a record collection with a formatter raises
+`NameError` there — so the initialisation is added in both functions.
 
 ## Content-Disposition for inline formatters
 

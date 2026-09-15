@@ -110,6 +110,22 @@ def test_item_as_attachment_formatter(client):
         'attachment; filename="obs.gml"'
 
 
+def test_item_passes_the_requested_crs_to_the_formatter(client):
+    """A formatter has to name the CRS its geometries are in."""
+
+    crs = 'http://www.opengis.net/def/crs/OGC/1.3/CRS84'
+    response = client.get(f'{ITEM}?f=inlinegml&crs={crs}')
+
+    assert response.status_code == 200
+    assert f'srsName="{crs}"' in _text(response)
+
+
+def test_item_without_crs_leaves_the_formatter_option_unset(client):
+    response = client.get(f'{ITEM}?f=inlinegml')
+
+    assert 'srsName' not in _text(response)
+
+
 def test_item_accept_header_negotiation(client):
     """The formatter mimetypes are only known from the configuration."""
 
