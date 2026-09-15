@@ -48,12 +48,15 @@ ARG DEB_BUILD_DEPS="\
 
 # starlette/uvicorn: the base image ships the Flask stack only, and we
 # run under Starlette.
-# The two git packages are our own, and are installed with their
+# The five git packages are our own, and are installed with their
 # dependencies (unlike the wheel below).
 ARG PYTHON_PACKAGES="\
     starlette \
     uvicorn \
-    git+https://github.com/Arkitektum/pygeoapi.providers.git@main \
+    git+https://github.com/Arkitektum/pygeoapi.provider.styles.git@main \
+    git+https://github.com/Arkitektum/pygeoapi.provider.postgresql_ext.git@main \
+    git+https://github.com/Arkitektum/pygeoapi.provider.mvt_postgresql_ext.git@main \
+    git+https://github.com/Arkitektum/pygeoapi.formatter.jsonfg.git@main \
     git+https://github.com/Arkitektum/pygeoapi.formatter.gml-npad.git@develop"
 
 COPY --from=build /dist/*.whl /tmp/
