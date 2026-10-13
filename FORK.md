@@ -591,18 +591,22 @@ string out of this file.
 
 **Files:** `pygeoapi/api/geojson_profiles.py` — a new file. Hooked from
 `pygeoapi/api/__init__.py` with 2 lines (see Conformance below) and from
-`pygeoapi/api/itemtypes.py` with 10 lines, all marked `# DIBK`: the import,
+`pygeoapi/api/itemtypes.py` with 12 lines, all marked `# DIBK`: the import,
 and
 
 ```python
     reserved_fieldnames.append('profile')  # DIBK
     geojson_profile = negotiate_profile(request, dataset_formatters)  # DIBK
-    set_profile_headers(request, headers, geojson_profile)  # DIBK
+    set_profile_headers(headers, geojson_profile)  # DIBK
     add_profile_parameters(cfg, paths)  # DIBK
 ```
 
-The middle two appear in both `get_collection_items()` and
-`get_collection_item()`.
+`negotiate_profile()` runs in both `get_collection_items()` and
+`get_collection_item()`, and `set_profile_headers()` twice in each: before the
+output branches, and again once a formatter has written, because upstream's
+formatter branch and `write_item()` set the formatter's media type last. In
+`get_collection_item()` the `write_item()` call now unpacks its result to make
+room for that, which costs one more line.
 
 **Why:** JSON-FG 1.0 (OGC 21-045) Req 33 requires a `profile` query parameter
 on every GET/HEAD that returns GeoJSON, accepting at least `rfc7946` and
@@ -620,11 +624,19 @@ parameter", which JSON-FG depends on:
   than rejected (Part 5 Rec 2 B). This keeps the alternate links truthful:
   pygeoapi copies every query parameter into them, so the GeoJSON link on a
   `profile=jsonfg` page is `?f=json&profile=jsonfg`, and it must stay GeoJSON.
+- **A formatter's own media type also wins.** NAP types its JSON-FG
+  formatter `application/vnd.ogc.fg+json`, the media type of the JSON-FG
+  drafts (nap ADR 0020). That type is unambiguous, so
+  `Accept: application/vnd.ogc.fg+json` keeps the formatter like `f=jsonfg`
+  does, and both name its first declared profile.
 - **Without `f`**, when negotiation landed on GeoJSON or on an
   `application/geo+json` formatter, the first requested profile that a
-  formatter declares replaces the negotiated format. Anything else is
-  answered as `rfc7946`. A formatter's media type therefore never wins
-  negotiation on its own, whether or not it declares profiles.
+  formatter declares replaces the negotiated format and is served as
+  `application/geo+json`, whatever the formatter's own media type. Abstract
+  test 32 asserts that type. Anything else is answered as `rfc7946`, so
+  `application/geo+json`, shared with plain GeoJSON, never picks a formatter
+  on its own. The alternate link keeps the formatter's own type: GDAL and
+  QGIS pick items links by type, which is why NAP keeps the legacy one.
 - **Values** are ids, `http(s)://www.opengis.net/def/profile/OGC/0/{id}` URIs
   or `[ogc-profile:{id}]` CURIEs, comma separated (Part 5 Req 25). An unknown
   value falls back to `rfc7946` instead of answering 400.
@@ -653,8 +665,9 @@ profile, the one that serves it by default wins.
 **Hook placement:** `negotiate_profile()` runs straight after format
 validation, because it may rewrite `request._format`, and both
 `strip_synthetic_properties()` and the paging links read the format after
-that. `set_profile_headers()` runs just before the output branches, so an
-error response never carries a profile link.
+that. It also settles the media type, so `set_profile_headers()` only applies
+it; that runs after the last error return of each path, so an error response
+never carries a profile link.
 
 **`profile` is a reserved query parameter on items.** Without it, a provider
 with `include_extra_query_parameters: true` receives `profile=jsonfg` as a

@@ -319,6 +319,54 @@ def test_formatter_without_profiles_still_answers_f(client):
     assert 'Link' not in response.headers
 
 
+# A profile formatter with a media type of its own
+
+LEGACY_ENDPOINTS = ['/collections/legacytype/items',
+                    '/collections/legacytype/items/1']
+LEGACY_TYPE = 'application/vnd.ogc.fg+json'
+
+
+@pytest.mark.parametrize('path', LEGACY_ENDPOINTS)
+def test_f_names_the_profile_of_its_own_media_type(client, path):
+    response = client.get(f'{path}?f=jsonfg')
+
+    assert response.headers['Content-Type'] == LEGACY_TYPE
+    assert response.headers['Link'] == LINK_JSONFG
+    assert _written_by(response) == 'jsonfg'
+
+
+@pytest.mark.parametrize('path', LEGACY_ENDPOINTS)
+def test_accept_of_its_own_media_type_names_the_profile(client, path):
+    response = client.get(path, headers={'accept': LEGACY_TYPE})
+
+    assert response.headers['Content-Type'] == LEGACY_TYPE
+    assert response.headers['Link'] == LINK_JSONFG
+    assert _written_by(response) == 'jsonfg'
+
+
+@pytest.mark.parametrize('path', LEGACY_ENDPOINTS)
+def test_abstract_test_32_with_its_own_media_type(client, path):
+    """OGC 21-045 A.8.2 asserts application/geo+json, whatever the
+    formatter calls its media type.
+    """
+
+    response = client.get(f'{path}?profile=jsonfg', headers=ACCEPT_GEOJSON)
+
+    assert response.headers['Content-Type'] == GEOJSON
+    assert response.headers['Link'] == LINK_JSONFG
+    assert _written_by(response) == 'jsonfg'
+
+
+def test_alternate_link_keeps_its_own_media_type(client):
+    """GDAL and QGIS follow the last items link typed application/geo+json."""
+
+    response = client.get('/collections/legacytype/items?profile=jsonfg')
+    alternates = [link for link in _json(response)['links']
+                  if link['href'].endswith('?f=jsonfg&profile=jsonfg')]
+
+    assert [link['type'] for link in alternates] == [LEGACY_TYPE]
+
+
 def test_profile_is_not_a_property_filter(client):
     response = client.get(
         '/collections/echo/items?profile=rfc7946&kommune=3201')
@@ -353,9 +401,16 @@ def test_conformance_declares_jsonfg_in_web_apis(config):
 
 
 def test_conformance_without_a_jsonfg_profile_formatter(config):
-    del config['resources']['obs']['formatters']
+    for collection in ('obs', 'legacytype'):
+        del config['resources'][collection]['formatters']
 
     assert JSONFG_IN_WEB_APIS not in _conforms_to(config)
+
+
+def test_conformance_with_only_a_legacy_media_type(config):
+    del config['resources']['obs']['formatters']
+
+    assert JSONFG_IN_WEB_APIS in _conforms_to(config)
 
 
 # OpenAPI

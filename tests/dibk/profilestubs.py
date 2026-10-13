@@ -45,13 +45,13 @@ JSONFG_CORE = 'http://www.opengis.net/spec/json-fg-1/1.0/conf/core'
 
 
 class GeoJsonFormatter(BaseFormatter):
-    """An `application/geo+json` formatter that reports what it was given"""
+    """A JSON-FG formatter that reports what it was given"""
 
     def __init__(self, formatter_def: dict):
         f = formatter_def['f']
         super().__init__({'name': f})
         self.f = f
-        self.mimetype = 'application/geo+json'
+        self.mimetype = formatter_def.get('mimetype', 'application/geo+json')
         self.extension = 'json'
 
         if 'profiles' in formatter_def:

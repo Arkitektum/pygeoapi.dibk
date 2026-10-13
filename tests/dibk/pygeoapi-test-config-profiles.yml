@@ -149,6 +149,29 @@ resources:
             - name: tests.dibk.profilestubs.GeoJsonFormatter
               f: legacyfg
 
+    legacytype:
+        type: collection
+        title:
+            en: Legacy media type
+        description:
+            en: JSON-FG under the media type of the JSON-FG drafts
+        keywords:
+            - observations
+        extents:
+            spatial:
+                bbox: [-180, -90, 180, 90]
+                crs: http://www.opengis.net/def/crs/OGC/1.3/CRS84
+        providers:
+            - type: feature
+              name: tests.dibk.syntheticprovider.SyntheticProvider
+              data: tests/data/obs.csv
+              id_field: id
+        formatters:
+            - name: tests.dibk.profilestubs.GeoJsonFormatter
+              f: jsonfg
+              mimetype: application/vnd.ogc.fg+json
+              profiles: [jsonfg]
+
     echo:
         type: collection
         title:

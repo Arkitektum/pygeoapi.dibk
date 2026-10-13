@@ -38,7 +38,7 @@ any other profile is served by a collection formatter that lists it in its
 
 import logging
 import re
-from typing import Dict, List, Optional
+from typing import Dict, List, NamedTuple, Optional
 
 from pygeoapi.formats import F_JSON
 from pygeoapi.util import (filter_dict_by_key_value, get_choice_from_headers,
@@ -112,6 +112,17 @@ def get_profile_formatters(dataset_formatters: Dict) -> Dict:
     return profile_formatters
 
 
+class GeoJsonProfile(NamedTuple):
+    """
+    The profile of a response, and the media type to serve it as
+
+    `media_type` is `None` when the response keeps the type its format has.
+    """
+
+    id: str
+    media_type: Optional[str] = None
+
+
 def _is_geojson(formatter) -> bool:
     return formatter.mimetype.split(';')[0].strip() == GEOJSON
 
@@ -120,60 +131,8 @@ def _has_f(request) -> bool:
     return bool((request.params.get('f') or '').strip())
 
 
-def negotiate_profile(request, dataset_formatters: Dict) -> Optional[str]:
-    """
-    Choose the GeoJSON profile of the response
-
-    An explicit `f` keeps its format and only names the profile it serves.
-    Otherwise the first requested profile a formatter declares replaces the
-    negotiated format, and anything else is answered as plain GeoJSON, so
-    a formatter's `application/geo+json` never wins negotiation on its own.
-
-    :param request: `APIRequest` instance, its format already negotiated
-    :param dataset_formatters: `dict` of formatters, keyed by name
-
-    :returns: `str` of the profile identifier, or `None` when the response
-              is not GeoJSON or its profile is unknown
-    """
-
-    formatter = next((df for df in dataset_formatters.values()
-                      if df.f == request.format), None)
-
-    if formatter is None and request.format not in (None, F_JSON):
-        return None
-
-    if formatter is not None and not _is_geojson(formatter):
-        return None
-
-    if _has_f(request):
-        if formatter is None:
-            return RFC7946
-
-        return (getattr(formatter, 'profiles', None) or [None])[0]
-
-    profile_formatters = get_profile_formatters(dataset_formatters)
-
-    for profile in parse_profiles(request.params.get('profile')):
-        if profile == RFC7946:
-            break
-
-        if profile in profile_formatters:
-            request._format = profile_formatters[profile].f
-            LOGGER.debug(f'Profile {profile}: format {request.format}')
-
-            return profile
-
-    if formatter is not None:
-        request._format = None
-
-    return RFC7946
-
-
 def _prefers_geojson(request) -> bool:
     """Whether `Accept` ranks `application/geo+json` above JSON"""
-
-    if _has_f(request):
-        return False
 
     accepted = get_choice_from_headers(
         request.get_request_headers(request.headers), 'accept', all=True)
@@ -185,23 +144,76 @@ def _prefers_geojson(request) -> bool:
     return False
 
 
-def set_profile_headers(request, headers: Dict,
-                        profile: Optional[str]) -> None:
+def negotiate_profile(request,
+                      dataset_formatters: Dict) -> Optional[GeoJsonProfile]:
     """
-    Name the profile of a successful response
+    Choose the GeoJSON profile of the response
 
-    :param request: `APIRequest` instance
+    A format chosen by `f`, or by a media type of its own, stays and names
+    the profile it serves. A format reached through `application/geo+json`,
+    which plain GeoJSON shares, gives way to the first requested profile a
+    formatter declares, served as `application/geo+json`; without one the
+    response is plain GeoJSON.
+
+    :param request: `APIRequest` instance, its format already negotiated
+    :param dataset_formatters: `dict` of formatters, keyed by name
+
+    :returns: `GeoJsonProfile`, or `None` when the response is neither
+              GeoJSON nor a profile a formatter declares
+    """
+
+    formatter = next((df for df in dataset_formatters.values()
+                      if df.f == request.format), None)
+    declared = getattr(formatter, 'profiles', None) or []
+
+    if formatter is None and request.format not in (None, F_JSON):
+        return None
+
+    if formatter is not None and not declared and not _is_geojson(formatter):
+        return None
+
+    if _has_f(request) or (formatter is not None and
+                           not _is_geojson(formatter)):
+        if formatter is None:
+            return GeoJsonProfile(RFC7946)
+
+        return GeoJsonProfile(declared[0]) if declared else None
+
+    profile_formatters = get_profile_formatters(dataset_formatters)
+
+    for profile in parse_profiles(request.params.get('profile')):
+        if profile == RFC7946:
+            break
+
+        if profile in profile_formatters:
+            request._format = profile_formatters[profile].f
+            LOGGER.debug(f'Profile {profile}: format {request.format}')
+
+            return GeoJsonProfile(profile, GEOJSON)
+
+    if formatter is not None:
+        request._format = None
+
+    return GeoJsonProfile(RFC7946,
+                          GEOJSON if _prefers_geojson(request) else None)
+
+
+def set_profile_headers(headers: Dict,
+                        profile: Optional[GeoJsonProfile]) -> None:
+    """
+    Name the profile of a successful response, and its media type
+
     :param headers: `dict` of response headers, modified in place
-    :param profile: `str` returned by `negotiate_profile()`
+    :param profile: `GeoJsonProfile` returned by `negotiate_profile()`
     """
 
     if profile is None:
         return
 
-    headers['Link'] = f'<{PROFILE_URI.format(profile)}>; rel="profile"'
+    headers['Link'] = f'<{PROFILE_URI.format(profile.id)}>; rel="profile"'
 
-    if profile == RFC7946 and _prefers_geojson(request):
-        headers['Content-Type'] = GEOJSON
+    if profile.media_type:
+        headers['Content-Type'] = profile.media_type
 
 
 def get_conformance_classes(cfg: Dict) -> List[str]:

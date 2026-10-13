@@ -678,7 +678,7 @@ def get_collection_items(
     # (if it supports language) and/or otherwise the requested pygeoapi
     # locale (or fallback default locale)
     l10n.set_response_language(headers, prv_locale, request.locale)
-    set_profile_headers(request, headers, geojson_profile)  # DIBK
+    set_profile_headers(headers, geojson_profile)  # DIBK
 
     if request.format == F_HTML:  # render
         tpl_config = api.get_dataset_templates(dataset)
@@ -736,6 +736,7 @@ def get_collection_items(
         else:  # DIBK: render inline, but still name the download
             filename = p.filename or f'{dataset}.{formatter.extension}'  # DIBK
             headers['Content-Disposition'] = f'inline; filename="{filename}"'  # noqa DIBK
+        set_profile_headers(headers, geojson_profile)  # DIBK
 
         return headers, HTTPStatus.OK, content
 
@@ -1040,7 +1041,7 @@ def get_collection_item(api: API, request: APIRequest,
     # (if it supports language) and/or otherwise the requested pygeoapi
     # locale (or fallback default locale)
     l10n.set_response_language(headers, prv_locale, request.locale)
-    set_profile_headers(request, headers, geojson_profile)  # DIBK
+    set_profile_headers(headers, geojson_profile)  # DIBK
 
     if request.format == F_HTML:  # render
         tpl_config = api.get_dataset_templates(dataset)
@@ -1060,9 +1061,11 @@ def get_collection_item(api: API, request: APIRequest,
         return headers, HTTPStatus.OK, content
 
     elif is_formatter_format(request, dataset_formatters):  # DIBK
-        return write_item(api, request, headers, dataset, p,  # DIBK
-                          provider_def, dataset_formatters, content,  # DIBK
-                          query_crs_uri)  # DIBK
+        headers, status, content = write_item(  # DIBK
+            api, request, headers, dataset, p, provider_def,  # DIBK
+            dataset_formatters, content, query_crs_uri)  # DIBK
+        set_profile_headers(headers, geojson_profile)  # DIBK
+        return headers, status, content  # DIBK
 
     elif request.format == F_JSONLD:
         content = geojson2jsonld(
