@@ -590,6 +590,7 @@ string out of this file.
 ## GeoJSON profiles
 
 **Files:** `pygeoapi/api/geojson_profiles.py` — a new file. Hooked from
+`pygeoapi/api/__init__.py` with 2 lines (see Conformance below) and from
 `pygeoapi/api/itemtypes.py` with 10 lines, all marked `# DIBK`: the import,
 and
 
@@ -642,10 +643,10 @@ its output satisfies in a `profiles` attribute; the first one is what it
 serves for `f=` without a `profile`. `pygeoapi.formatter.jsonfg` derives it
 from `geometry_null` — `['jsonfg']`, or `['jsonfg-plus', 'jsonfg']` when the
 WGS 84 geometry is kept — so the claim follows the configuration instead of
-being set beside it. It is not airtight: even with `geometry_null: false`, a
-feature that reaches the formatter without a GeoJSON geometry, or whose
-geometry fails to re-project to CRS84, is written with `geometry: null`, which
-`jsonfg-plus` forbids. Offering both is two formatter entries, the second with
+being set beside it. The formatter keeps `jsonfg-plus` honest per feature: a
+feature that cannot get a CRS84 geometry loses its `place` too, and under
+`skipGeometry=true` no feature gets a `place` at all. Offering both is two
+formatter entries, the second with
 `f: jsonfg-plus` and `geometry_null: false`. When two formatters list the same
 profile, the one that serves it by default wins.
 
@@ -669,12 +670,31 @@ collection supports; there is no `enum`, since URIs are valid values too. It
 loads each collection's formatters at document generation, as an items
 request does.
 
-**Not done:** `/conformance` does not declare
-`http://www.opengis.net/spec/json-fg-1/1.0/conf/api`.
+**Conformance:** `conformance()` in `pygeoapi/api/__init__.py` gets 2 lines:
 
-**To drop this commit,** upstream would have to negotiate GeoJSON profiles:
-reserve `profile` on items, and let a formatter declare the profiles it
-produces so negotiation can choose between formatters sharing a media type.
+```python
+from pygeoapi.api.geojson_profiles import get_conformance_classes  # DIBK
+    conformance_list.extend(get_conformance_classes(api.config))  # DIBK
+```
+
+It declares `http://www.opengis.net/spec/json-fg-1/1.0/conf/api` ("JSON-FG in
+Web APIs") once a collection has a formatter declaring `jsonfg`. That class
+targets APIs serving JSON-FG; the `profile` parameter itself works on every
+collection. It is the only JSON-FG class declared: `core`, `types-schemas`,
+`profiles` and `circular-arcs` target documents, and every JSON-FG response
+lists the ones it meets in its own `conformsTo`. Each `/conformance` request
+loads every collection's formatters to decide.
+
+The claim has one caveat. Req 33 covers every GET that returns GeoJSON, and
+only items and single items support `profile`, so an instance whose EDR
+collections or process job results return `application/geo+json` does not
+meet the class in full. Ours has no EDR collections; the media type of the
+`dokanalyse` process's job results has not been checked.
+
+**To drop these commits,** upstream would have to negotiate GeoJSON profiles:
+reserve `profile` on items, let a formatter declare the profiles it produces so
+negotiation can choose between formatters sharing a media type, and declare
+the conformance class when one serves JSON-FG.
 
 **Test fallout:** none. `tests/dibk/test_geojson_profiles.py` drives both
 frameworks, abstract tests 31 and 32 (OGC 21-045 A.8) included, with the stub

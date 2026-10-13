@@ -47,8 +47,11 @@ from pygeoapi.util import (filter_dict_by_key_value, get_choice_from_headers,
 LOGGER = logging.getLogger(__name__)
 
 RFC7946 = 'rfc7946'
+JSONFG = 'jsonfg'
 
 GEOJSON = 'application/geo+json'
+
+CONFORMANCE_CLASS_API = 'http://www.opengis.net/spec/json-fg-1/1.0/conf/api'
 
 PROFILE_URI = 'http://www.opengis.net/def/profile/OGC/0/{}'
 
@@ -199,6 +202,30 @@ def set_profile_headers(request, headers: Dict,
 
     if profile == RFC7946 and _prefers_geojson(request):
         headers['Content-Type'] = GEOJSON
+
+
+def get_conformance_classes(cfg: Dict) -> List[str]:
+    """
+    JSON-FG conformance classes of the API
+
+    "JSON-FG in Web APIs" applies once a collection serves the `jsonfg`
+    profile; the `profile` parameter itself is supported everywhere.
+
+    :param cfg: `dict` of configuration
+
+    :returns: `list` of conformance class URIs
+    """
+
+    collections = filter_dict_by_key_value(cfg['resources'],
+                                           'type', 'collection')
+
+    for collection in collections.values():
+        formatters = get_dataset_formatters(collection)
+
+        if JSONFG in get_profile_formatters(formatters):
+            return [CONFORMANCE_CLASS_API]
+
+    return []
 
 
 def _get_profile_parameter(profiles: List[str]) -> Dict:

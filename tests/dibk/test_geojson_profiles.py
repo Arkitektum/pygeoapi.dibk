@@ -36,18 +36,21 @@ frameworks are driven, as in `test_item_formatters.py`. See "GeoJSON profiles"
 in FORK.md.
 """
 
+import json
 import sys
 from urllib.parse import quote
 
 import pytest
 
 import pygeoapi
+from pygeoapi.api import API, conformance
 from pygeoapi.api.geojson_profiles import get_profile_formatters
 from pygeoapi.formats import FORMAT_TYPES, F_GZIP
 from pygeoapi.openapi import get_oas, validate_openapi_document
 from pygeoapi.util import yaml_load
 
-from ..util import get_test_file_path, mock_flask, mock_starlette
+from ..util import (get_test_file_path, mock_api_request, mock_flask,
+                    mock_starlette)
 from .profilestubs import GeoJsonFormatter
 
 CONFIG = 'dibk/pygeoapi-test-config-profiles.yml'
@@ -60,6 +63,8 @@ ACCEPT_GEOJSON = {'accept': GEOJSON}
 LINK_RFC7946 = '<http://www.opengis.net/def/profile/OGC/0/rfc7946>; rel="profile"'  # noqa
 LINK_JSONFG = '<http://www.opengis.net/def/profile/OGC/0/jsonfg>; rel="profile"'  # noqa
 LINK_JSONFG_PLUS = '<http://www.opengis.net/def/profile/OGC/0/jsonfg-plus>; rel="profile"'  # noqa
+
+JSONFG_IN_WEB_APIS = 'http://www.opengis.net/spec/json-fg-1/1.0/conf/api'
 
 
 def _clear_stale_app_module(name: str) -> None:
@@ -333,6 +338,24 @@ def test_default_profile_wins_over_a_satisfied_one():
                                          'jsonfg': jsonfg})
 
     assert formatters == {'jsonfg-plus': plus, 'jsonfg': jsonfg}
+
+
+# Conformance
+
+def _conforms_to(cfg: dict) -> list:
+    _, _, body = conformance(API(cfg, {}), mock_api_request())
+
+    return json.loads(body)['conformsTo']
+
+
+def test_conformance_declares_jsonfg_in_web_apis(config):
+    assert JSONFG_IN_WEB_APIS in _conforms_to(config)
+
+
+def test_conformance_without_a_jsonfg_profile_formatter(config):
+    del config['resources']['obs']['formatters']
+
+    assert JSONFG_IN_WEB_APIS not in _conforms_to(config)
 
 
 # OpenAPI

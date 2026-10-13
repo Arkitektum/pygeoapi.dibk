@@ -58,6 +58,7 @@ import pytz
 from pygeoapi import __version__, l10n
 from pygeoapi.api.collection import gen_collection, OGC_RELTYPES_BASE
 from pygeoapi.api.provider_schema import apply_provider_schema  # DIBK
+from pygeoapi.api.geojson_profiles import get_conformance_classes  # DIBK
 from pygeoapi.formats import FORMAT_TYPES, F_GZIP, F_HTML, F_JSON, F_JSONLD
 from pygeoapi.linked_data import jsonldify, jsonldify_collection
 from pygeoapi.log import setup_logger
@@ -907,6 +908,7 @@ def conformance(api: API, request: APIRequest) -> Tuple[dict, int, str]:
 
     if api.pubsub_client is not None:
         conformance_list.extend(apis_dict['pubsub'].CONFORMANCE_CLASSES)
+    conformance_list.extend(get_conformance_classes(api.config))  # DIBK
 
     conformance = {
         'conformsTo': sorted(list(set(conformance_list)))
