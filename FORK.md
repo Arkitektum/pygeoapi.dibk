@@ -587,6 +587,100 @@ upstream release, and reset it to `1` when rebasing onto the next one.
 override — there is none today; `setup.py::get_package_version()` regexes the
 string out of this file.
 
+## GeoJSON profiles
+
+**Files:** `pygeoapi/api/geojson_profiles.py` — a new file. Hooked from
+`pygeoapi/api/itemtypes.py` with 10 lines, all marked `# DIBK`: the import,
+and
+
+```python
+    reserved_fieldnames.append('profile')  # DIBK
+    geojson_profile = negotiate_profile(request, dataset_formatters)  # DIBK
+    set_profile_headers(request, headers, geojson_profile)  # DIBK
+    add_profile_parameters(cfg, paths)  # DIBK
+```
+
+The middle two appear in both `get_collection_items()` and
+`get_collection_item()`.
+
+**Why:** JSON-FG 1.0 (OGC 21-045) Req 33 requires a `profile` query parameter
+on every GET/HEAD that returns GeoJSON, accepting at least `rfc7946` and
+`jsonfg`, and Rec 4 makes `rfc7946` the default. JSON-FG shares the
+`application/geo+json` media type with plain GeoJSON, and upstream negotiates
+`Accept` on media type alone. On a collection with the JSON-FG formatter,
+`Accept: application/geo+json` therefore returned JSON-FG — with the default
+`geometry_null: true`, features whose `geometry` is `null` — to clients that
+asked for GeoJSON.
+
+**Behaviour**, following OGC API - Features - Part 5 "Profile query
+parameter", which JSON-FG depends on:
+
+- **An explicit `f` wins.** The format stays and `profile` is ignored rather
+  than rejected (Part 5 Rec 2 B). This keeps the alternate links truthful:
+  pygeoapi copies every query parameter into them, so the GeoJSON link on a
+  `profile=jsonfg` page is `?f=json&profile=jsonfg`, and it must stay GeoJSON.
+- **Without `f`**, when negotiation landed on GeoJSON or on an
+  `application/geo+json` formatter, the first requested profile that a
+  formatter declares replaces the negotiated format. Anything else is
+  answered as `rfc7946`. A formatter's media type therefore never wins
+  negotiation on its own, whether or not it declares profiles.
+- **Values** are ids, `http(s)://www.opengis.net/def/profile/OGC/0/{id}` URIs
+  or `[ogc-profile:{id}]` CURIEs, comma separated (Part 5 Req 25). An unknown
+  value falls back to `rfc7946` instead of answering 400.
+- **`Link: <http://www.opengis.net/def/profile/OGC/0/{id}>; rel="profile"`**
+  names the profile served (Part 5 Req 26 B). It is only set on successful
+  GeoJSON responses: not on HTML, JSON-LD or other formatters, not on errors,
+  and not for a formatter that declares no profiles, since its output is
+  unknown.
+- **`Content-Type: application/geo+json`** for `rfc7946` only when `Accept`
+  ranks it above `application/json`. Otherwise upstream's `application/json`
+  stays, which `tests/api/test_itemtypes.py` pins for `f=json` and
+  `Accept: application/json`.
+
+**The formatter contract:** a formatter that serves a profile lists the ids
+its output satisfies in a `profiles` attribute; the first one is what it
+serves for `f=` without a `profile`. `pygeoapi.formatter.jsonfg` derives it
+from `geometry_null` — `['jsonfg']`, or `['jsonfg-plus', 'jsonfg']` when the
+WGS 84 geometry is kept — so the claim follows the configuration instead of
+being set beside it. It is not airtight: even with `geometry_null: false`, a
+feature that reaches the formatter without a GeoJSON geometry, or whose
+geometry fails to re-project to CRS84, is written with `geometry: null`, which
+`jsonfg-plus` forbids. Offering both is two formatter entries, the second with
+`f: jsonfg-plus` and `geometry_null: false`. When two formatters list the same
+profile, the one that serves it by default wins.
+
+**Hook placement:** `negotiate_profile()` runs straight after format
+validation, because it may rewrite `request._format`, and both
+`strip_synthetic_properties()` and the paging links read the format after
+that. `set_profile_headers()` runs just before the output branches, so an
+error response never carries a profile link.
+
+**`profile` is a reserved query parameter on items.** Without it, a provider
+with `include_extra_query_parameters: true` receives `profile=jsonfg` as a
+property filter. The cost is that a property literally named `profile` can no
+longer be filtered on. Appended rather than added to the list literal, so the
+upstream line stays untouched. The queryables endpoint's own `profile`
+(`actual-domain`, `valid-domain`) is a different handler and unaffected.
+
+**OpenAPI:** `add_profile_parameters()` declares the parameter on the GET
+items and GET item operations of every collection, with Part 5's array schema
+and `style: form, explode: false`. The description lists the profile ids that
+collection supports; there is no `enum`, since URIs are valid values too. It
+loads each collection's formatters at document generation, as an items
+request does.
+
+**Not done:** `/conformance` does not declare
+`http://www.opengis.net/spec/json-fg-1/1.0/conf/api`.
+
+**To drop this commit,** upstream would have to negotiate GeoJSON profiles:
+reserve `profile` on items, and let a formatter declare the profiles it
+produces so negotiation can choose between formatters sharing a media type.
+
+**Test fallout:** none. `tests/dibk/test_geojson_profiles.py` drives both
+frameworks, abstract tests 31 and 32 (OGC 21-045 A.8) included, with the stub
+formatter in `tests/dibk/profilestubs.py` and the config in
+`tests/dibk/pygeoapi-test-config-profiles.yml`.
+
 ## Pre-existing test failures at tag 0.24.0
 
 Recorded 2026-09-07 by running our subset (`pytest -c pytest-dibk.ini`) in a

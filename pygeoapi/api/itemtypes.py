@@ -55,6 +55,9 @@ from pygeoapi.api.dataset_formatters import (get_alternate_links,  # DIBK
                                              negotiate_dataset_format,  # DIBK
                                              write_item)  # DIBK
 from pygeoapi.api.synthetic_properties import strip_synthetic_properties  # noqa DIBK
+from pygeoapi.api.geojson_profiles import (add_profile_parameters,  # DIBK
+                                           negotiate_profile,  # DIBK
+                                           set_profile_headers)  # DIBK
 from pygeoapi.crs import (DEFAULT_CRS, DEFAULT_STORAGE_CRS,
                           create_crs_transform_spec, get_supported_crs_list,
                           modify_pygeofilter, transform_bbox,
@@ -260,6 +263,7 @@ def get_collection_items(
                            'offset', 'resulttype', 'datetime', 'sortby',
                            'properties', 'skipGeometry', 'q',
                            'filter', 'filter-lang', 'filter-crs']
+    reserved_fieldnames.append('profile')  # DIBK
 
     collections = filter_dict_by_key_value(api.config['resources'],
                                            'type', 'collection')
@@ -371,6 +375,7 @@ def get_collection_items(
 
     if not request.is_valid(dataset_formatters.keys()):
         return api.get_format_exception(request)
+    geojson_profile = negotiate_profile(request, dataset_formatters)  # DIBK
 
     crs_transform_spec = None
     query_crs_uri = None  # DIBK: only bound for 'feature' providers below
@@ -673,6 +678,7 @@ def get_collection_items(
     # (if it supports language) and/or otherwise the requested pygeoapi
     # locale (or fallback default locale)
     l10n.set_response_language(headers, prv_locale, request.locale)
+    set_profile_headers(request, headers, geojson_profile)  # DIBK
 
     if request.format == F_HTML:  # render
         tpl_config = api.get_dataset_templates(dataset)
@@ -929,6 +935,7 @@ def get_collection_item(api: API, request: APIRequest,
     dataset_formatters = get_dataset_formatters(collections[dataset])  # DIBK
     if not negotiate_dataset_format(request, dataset_formatters):  # DIBK
         return api.get_format_exception(request)  # DIBK
+    geojson_profile = negotiate_profile(request, dataset_formatters)  # DIBK
 
     crs_transform_spec = None
     query_crs_uri = None  # DIBK: only bound for 'feature' providers below
@@ -1033,6 +1040,7 @@ def get_collection_item(api: API, request: APIRequest,
     # (if it supports language) and/or otherwise the requested pygeoapi
     # locale (or fallback default locale)
     l10n.set_response_language(headers, prv_locale, request.locale)
+    set_profile_headers(request, headers, geojson_profile)  # DIBK
 
     if request.format == F_HTML:  # render
         tpl_config = api.get_dataset_templates(dataset)
@@ -1427,6 +1435,7 @@ def get_oas_30(cfg: dict, locale: str) -> tuple[list[dict[str, str]], dict[str, 
         except ProviderTypeError:
             LOGGER.debug('collection is not feature/item based')
 
+    add_profile_parameters(cfg, paths)  # DIBK
     return [{'name': 'records'}, {'name': 'features'}], {'paths': paths}
 
 
