@@ -565,7 +565,7 @@ does not require touching the global table.
 **File:** `pygeoapi/__init__.py` — 1 line, marked `# DIBK`.
 
 ```python
-__version__ = '0.24.0+dibk1'  # DIBK
+__version__ = '0.24.0+dibk2'  # DIBK
 ```
 
 **Why:** the deploy image installs our wheel over

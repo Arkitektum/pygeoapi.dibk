@@ -70,7 +70,7 @@ hooks land.
 ## Build
 
 ```sh
-python3 -m build --wheel        # → dist/pygeoapi-0.24.0+dibk1-py3-none-any.whl
+python3 -m build --wheel        # → dist/pygeoapi-0.24.0+dibk2-py3-none-any.whl
 ```
 
 ## Docker
